@@ -1,4 +1,5 @@
-// The engine as the page calls it (docs/PROTOCOL.md): one function a call.
+// The engine as the page calls it (docs/PROTOCOL.md): `new({seed, rules})`,
+// `send(command)` answering { ok, state }, and `state()`.
 // A fault in the module (a panic) is told once to `onTrap`, and the engine is
 // still after it (kit/js/engine.js `guard`).
 import { guard, loadWasm } from "../../kit/js/engine.js";
@@ -10,8 +11,9 @@ export async function loadEngine(bytes, onTrap, options) {
   }
   return guard(
     {
-      new: ({ seed }) => {
-        ex.la_belle_lucie_new(seed >>> 0);
+      // rules: the code of docs/RULES.md (4, Classic, unless given).
+      new: ({ seed, rules = 4 }) => {
+        ex.la_belle_lucie_new(seed >>> 0, rules >>> 0);
         return out();
       },
       send: (command) => {

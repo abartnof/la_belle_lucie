@@ -6,47 +6,113 @@
 //! [`Session`] is the protocol with no WebAssembly in it, so it is tested
 //! natively; [`ffi`] wraps one in the exports the page calls.
 
-use la_belle_lucie_core::{Command, Game};
+use la_belle_lucie_core::{Card, Command, Game, Hint, Rules};
 
 /// Bump when the state's shape changes in a way a client must notice.
-pub const PROTOCOL: u32 = 1;
+pub const PROTOCOL: u32 = 2;
 
+#[derive(Clone)]
 pub struct Session {
     game: Game,
+    /// Set by `hint`, cleared by any other accepted command.
+    hint: Option<Hint>,
+}
+
+/// A card as a JSON string, or null.
+fn card_json(card: Option<Card>) -> String {
+    card.map_or_else(|| "null".to_string(), |c| format!("\"{}\"", c.code()))
+}
+
+fn hint_json(hint: &Hint) -> String {
+    format!(
+        "{{\"rule\":\"{}\",\"move\":\"{}\",\"card\":{},\"onto\":{},\"uncovers\":{}}}",
+        hint.rule.id(),
+        hint.command.text(),
+        card_json(hint.card),
+        card_json(hint.onto),
+        card_json(hint.uncovers),
+    )
 }
 
 impl Session {
-    pub fn new(seed: u32) -> Session {
+    pub fn new(seed: u32, rules: u32) -> Session {
         Session {
-            game: Game::new(u64::from(seed)),
+            game: Game::new(u64::from(seed), Rules::from_code(rules)),
+            hint: None,
         }
     }
 
     /// Carries out one command line; true if it was accepted.
     pub fn send(&mut self, line: &str) -> bool {
-        match Command::parse(line) {
-            Some(command) => self.game.apply(command).is_ok(),
-            None => false,
+        match line.trim() {
+            "hint" => {
+                self.hint = self.game.hint();
+                return true;
+            }
+            "undo" => {
+                let undone = self.game.undo().is_ok();
+                if undone {
+                    self.hint = None;
+                }
+                return undone;
+            }
+            _ => {}
         }
+        let accepted = Command::parse(line).is_some_and(|c| self.game.apply(c).is_ok());
+        if accepted {
+            self.hint = None;
+        }
+        accepted
     }
 
-    /// The state as JSON: what a client needs to draw the table and nothing
-    /// it could use to cheat (here the stock is a count, not its cards).
+    /// The state as JSON: the table, what may be played, and the hint if one
+    /// was asked for.
     pub fn state(&self) -> String {
-        let hand: Vec<String> = self
-            .game
-            .hand()
+        let game = &self.game;
+        let rules = game.rules();
+        let fans: Vec<String> = game
+            .fans()
             .iter()
-            .map(|c| format!("\"{}\"", c.code()))
+            .map(|fan| {
+                let cards: Vec<String> = fan.iter().map(|c| format!("\"{}\"", c.code())).collect();
+                format!("[{}]", cards.join(","))
+            })
             .collect();
-        let legal: Vec<&str> = self.game.legal().iter().map(|_| "draw").collect();
-        let legal: Vec<String> = legal.iter().map(|c| format!("\"{c}\"")).collect();
+        let home: Vec<String> = game.home().iter().map(u8::to_string).collect();
+        let legal: Vec<String> = game
+            .legal()
+            .iter()
+            .map(|c| format!("\"{}\"", c.text()))
+            .collect();
+        let prompt = if game.won() {
+            "won"
+        } else if game.lost() {
+            "lost"
+        } else {
+            "play"
+        };
         format!(
-            "{{\"protocol\":{PROTOCOL},\"prompt\":\"play\",\"seed\":{},\"stock\":{},\"hand\":[{}],\"legal\":[{}]}}",
-            self.game.seed(),
-            self.game.stock(),
-            hand.join(","),
+            "{{\"protocol\":{PROTOCOL},\"prompt\":\"{prompt}\",\"seed\":{},\"rules\":{},\
+\"options\":{{\"inorder\":{},\"redeals\":{},\"draw\":{},\"king\":{},\"trefoil\":{}}},\
+\"fans\":[{}],\"home\":[{}],\"redeals_left\":{},\"draw\":\"{}\",\"moves\":{},\
+\"legal\":[{}],\"undoable\":{},\"hint\":{}}}",
+            game.seed(),
+            rules.code(),
+            rules.in_order,
+            rules.redeals,
+            rules.draw,
+            rules.king_fills,
+            rules.trefoil,
+            fans.join(","),
+            home.join(","),
+            game.redeals_left(),
+            game.draw_state().code(),
+            game.record().len(),
             legal.join(","),
+            !game.record().is_empty(),
+            self.hint
+                .as_ref()
+                .map_or_else(|| "null".to_string(), hint_json),
         )
     }
 }
@@ -78,8 +144,8 @@ pub mod ffi {
 
     /// Sits down at a new table, discarding any old one.
     #[no_mangle]
-    pub extern "C" fn la_belle_lucie_new(seed: u32) {
-        SESSION.with(|s| *s.borrow_mut() = Some(Session::new(seed)));
+    pub extern "C" fn la_belle_lucie_new(seed: u32, rules: u32) {
+        SESSION.with(|s| *s.borrow_mut() = Some(Session::new(seed, rules)));
         render();
     }
 

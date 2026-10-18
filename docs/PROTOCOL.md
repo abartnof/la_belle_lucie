@@ -20,7 +20,7 @@ The engine holds the rules; the page draws `state` and sends commands.
 | `undo` | Take back the last command (replays the record). Refused at the start. |
 | `hint` | Asks for a hint; recorded nowhere; the next state carries `hint`, cleared by any other command. |
 
-Fan numbers are slots, stable until a redeal.
+Fan numbers are slots (0-based: `f0` is `fans[0]`), stable until a redeal. `send` takes a move with or without the `move ` prefix.
 
 ## State
 ```json
@@ -41,4 +41,5 @@ Fan numbers are slots, stable until a redeal.
   `draw ...` with it; `redeal`). `undo` and `hint` are always allowed and not listed.
 - `hint`: `{ "rule": id, "move": "f3>h" | "f3>f5" | "draw f2:1>f5" | "redeal", "card": "5S",
   "onto": "6S" | null, "uncovers": "4S" | null }`. `rule` is one of `home`, `dig`, `uncover`,
-  `build`, `redeal`, `draw`, `king`, `least_bad`. The engine speaks in codes, never prose.
+  `build`, `redeal`, `draw`, `king`, `least_bad`. For `redeal`, `card`, `onto` and `uncovers` are null; `onto` is null
+  for a move home or a king into an empty fan; `uncovers` is null for a draw. A king into an empty fan is `king` (or `dig`). The engine speaks in codes, never prose.
