@@ -242,10 +242,17 @@ def main() -> int:
         page.get_by_role("button", name="Done").click()
         page.reload()
         page.wait_for_selector(OPEN + " #lbl-seed", timeout=WAIT)
+        if page.locator("#lbl-n-hints").is_checked() or not page.locator("#lbl-n-home").is_checked():
+            bad("settings: the New game menu should show the saved aids")
+        page.locator("#lbl-n-hints").check()
         page.get_by_role("button", name="Deal", exact=True).click()
         settle(page)
-        if page.get_by_role("button", name="Hint").is_visible():
-            bad("settings: hints off should persist across reload")
+        if not page.get_by_role("button", name="Hint").is_visible():
+            bad("settings: hints turned on in the New game menu should show the Hint button")
+        page.get_by_role("button", name="Settings").click()
+        page.wait_for_selector(OPEN)
+        page.locator("#lbl-s-hints").uncheck()
+        page.get_by_role("button", name="Done").click()
         saved = page.evaluate(f'JSON.parse(localStorage.getItem("{KEY}"))')
         if saved.get("hints") is not False or saved.get("autoHome") is not True or saved.get("speed") != "instant":
             bad(f"settings: not saved in localStorage: {saved!r}")

@@ -344,7 +344,14 @@ export function createUi(root, hooks) {
       );
     }
     draw();
-    d.body.append(form, confirmBox, el("div", { class: "lbl-row lbl-actions" }, go, first ? null : button("Cancel", () => d.close(), "lbl-quiet")));
+    // The same aids as in Settings, here too: they are the same stored settings.
+    const aids = el("fieldset", { class: "lbl-set" }, el("legend", {}, "Aids"),
+      check("lbl-n-hints", "Hints", "Shows the Hint button.", "hints"),
+      check("lbl-n-hl", "Highlight legal targets", "Lights the places the chosen card may go.", "highlight"),
+      check("lbl-n-home", "Play cards home automatically", "A card that can go home goes at once, with no click.", "autoHome"),
+      check("lbl-n-moves", "Count moves", "Shows the move count.", "showMoves"),
+    );
+    d.body.append(form, aids, confirmBox, el("div", { class: "lbl-row lbl-actions" }, go, first ? null : button("Cancel", () => d.close(), "lbl-quiet")));
     d.onclose = () => d.node.remove();
     if (seed != null) checkSeed(); // a bad number from a shared link is said, not dropped
     d.open();

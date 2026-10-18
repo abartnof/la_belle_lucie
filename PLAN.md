@@ -35,4 +35,5 @@ Where things stand. Keep this current as work lands.
 
 - Redeal only when no other move exists; two redeals; shuffle by default (Cadogan, Dick, Morehead).
 - Empty fans stay empty unless "king fills" (Cavendish). The draw is once, on the last deal.
-- Settings hold look-and-feel and aids; rule changes live in the new-game menu only.
+- Settings hold look-and-feel and aids; rule changes live in the new-game menu only. The aids (hints, highlight,
+  auto-home, move count) also appear in the new-game menu, as the same stored settings.
