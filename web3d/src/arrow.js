@@ -4,6 +4,7 @@
 // place it goes, with a tail behind it. Everything is in the table's plane
 // (x, z in cm); table.js lifts it above the cards and draws it.
 
+import { M3, M3_MS } from "../../kit/js/easing.js";
 import { SUITS } from "./layout.js";
 
 // Where a hint's arrow runs: { from, to } as { x, z } points, or null (a redeal
@@ -50,54 +51,58 @@ export function curveAt(a, b, t) {
   return { x, z, dx: tx / tl, dz: tz / tl };
 }
 
-// One loop: fade in and glide (ease out), rest at the target, fade, a beat clear.
+// One loop, in Material 3's motion tokens (kit/js/easing.js): the arrow grows
+// in (emphasized decelerate, short4) while it travels (emphasized decelerate,
+// extra-long2), rests at the target, then shrinks away (emphasized accelerate,
+// medium1), and a beat is clear. `alpha` is how grown it is, 0 to 1: the arrow is
+// solid and casts a shadow, so it scales in and out instead of fading.
 export const CYCLE_MS = 2200;
-const FADE_IN = 150;
-const TRAVEL = 1100;
+const GROW = M3_MS.short4;
+const TRAVEL = M3_MS.extraLong2;
 const HOLD_END = 1500;
-const FADE_END = 1900;
+const SHRINK = M3_MS.medium1;
 export function phase(ms) {
   const m = ((ms % CYCLE_MS) + CYCLE_MS) % CYCLE_MS;
-  const k = Math.min(1, m / TRAVEL);
-  const t = m >= TRAVEL ? 1 : 1 - (1 - k) ** 3;
+  const t = M3.emphasizedDecelerate(m / TRAVEL);
   let alpha = 1;
-  if (m < FADE_IN) alpha = m / FADE_IN;
-  else if (m > HOLD_END) alpha = Math.max(0, 1 - (m - HOLD_END) / (FADE_END - HOLD_END));
+  if (m < GROW) alpha = M3.emphasizedDecelerate(m / GROW);
+  else if (m > HOLD_END) alpha = 1 - M3.emphasizedAccelerate(Math.min(1, (m - HOLD_END) / SHRINK));
   return { t, alpha };
 }
 
-// The arrow as triangles ([x, z] vertices, three to a triangle) with its head's
-// tip at t along the path and a tail `tail` of the path long behind it. `inflate`
-// (cm) grows it all round, for the halo.
-export function arrowShape(ends, t, { tail = 0.4, inflate = 0, scale = 1, steps = 14 } = {}) {
+// The arrow as one closed outline ([x, z] points, a single polygon: the shaft
+// and the head are one piece, so nothing can gap between them). The head's tip
+// is at t along the path; behind it a shaft that swells from a point to full
+// width, `tail` of the path long. `scale` shrinks it all about its tip.
+export function arrowOutline(ends, t, { tail = 0.4, scale = 1, steps = 14 } = {}) {
   const { from, to } = ends;
-  const headLen = 3.4 * scale + inflate * 1.6;
-  const headHalf = 2.5 * scale + inflate;
-  const shaft = 0.8 * scale + inflate;
-  const tipAt = curveAt(from, to, t);
-  const tip = { x: tipAt.x + tipAt.dx * inflate * 0.9, z: tipAt.z + tipAt.dz * inflate * 0.9 };
-  const tri = [];
-  // The chevron: tip, two wings, and a notch behind the tip.
-  const back = (d) => ({ x: tip.x - tipAt.dx * d, z: tip.z - tipAt.dz * d });
-  const side = (p, w) => ({ x: p.x - tipAt.dz * w, z: p.z + tipAt.dx * w });
-  const wingBase = back(headLen);
-  const wl = side(wingBase, headHalf);
-  const wr = side(wingBase, -headHalf);
-  const notch = back(headLen * 0.5);
-  const v = (p) => [p.x, p.z];
-  tri.push(v(tip), v(wl), v(notch), v(tip), v(notch), v(wr));
-  // The tail: a ribbon along the path up to the notch.
-  const t0 = Math.max(0, t - tail);
+  const headLen = 3.6 * scale;
+  const headHalf = 2.6 * scale;
+  const shaft = 0.85 * scale;
   const len = Math.hypot(to.x - from.x, to.z - from.z) || 1;
-  const t1 = Math.max(t0, t - (headLen * 0.5) / len);
+  const tipAt = curveAt(from, to, t);
+  const tip = { x: tipAt.x, z: tipAt.z };
+  const side = (p, nx, nz, w) => [p.x + nx * w, p.z + nz * w];
+  // The head's base is on the path, a head's length behind the tip.
+  const t1 = Math.max(0, t - headLen / len);
+  const base = curveAt(from, to, t1);
+  const t0 = Math.max(0, t - tail);
+  const left = [];
+  const right = [];
   if (t1 - t0 > 1e-3) {
-    let prev = null;
     for (let i = 0; i <= steps; i++) {
-      const c = curveAt(from, to, t0 + ((t1 - t0) * i) / steps);
-      const cur = { l: side(c, shaft), r: side(c, -shaft) };
-      if (prev) tri.push(v(prev.l), v(prev.r), v(cur.l), v(prev.r), v(cur.r), v(cur.l));
-      prev = cur;
+      const u = i / steps;
+      const c = curveAt(from, to, t0 + (t1 - t0) * u);
+      const w = shaft * (0.15 + 0.85 * Math.min(1, u * 2.5));
+      left.push(side(c, -c.dz, c.dx, w));
+      right.push(side(c, -c.dz, c.dx, -w));
     }
+  } else {
+    left.push(side(base, -base.dz, base.dx, shaft));
+    right.push(side(base, -base.dz, base.dx, -shaft));
   }
-  return { tip, dir: { x: tipAt.dx, z: tipAt.dz }, triangles: tri };
+  const wingL = side(base, -tipAt.dz, tipAt.dx, headHalf);
+  const wingR = side(base, -tipAt.dz, tipAt.dx, -headHalf);
+  const outline = [...left, wingL, [tip.x, tip.z], wingR, ...right.reverse()];
+  return { tip, dir: { x: tipAt.dx, z: tipAt.dz }, outline };
 }

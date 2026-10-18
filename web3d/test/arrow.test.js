@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { arrowEnds, arrowShape, curveAt, phase } from "../src/arrow.js";
+import { arrowEnds, arrowOutline, curveAt, phase } from "../src/arrow.js";
 import { layout } from "../src/layout.js";
 
 const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
@@ -63,39 +63,41 @@ test("the path is a gentle curve from the source to the target", () => {
   assert.ok(Math.abs(v.x) > 0.5);
 });
 
-test("the animation travels, rests, fades and repeats", () => {
+test("the animation travels, rests, shrinks away and repeats", () => {
   const p = (ms) => phase(ms);
   assert.equal(p(0).t, 0);
-  assert.ok(p(0).alpha < 1);
+  assert.equal(p(0).alpha, 0);
   let last = -1;
-  for (let ms = 0; ms <= 1100; ms += 50) {
+  for (let ms = 0; ms <= 800; ms += 25) {
     assert.ok(p(ms).t >= last, "never goes back");
     last = p(ms).t;
   }
-  assert.equal(p(1300).t, 1);
-  assert.equal(p(1300).alpha, 1);
-  assert.ok(p(1700).alpha < 1);
+  assert.equal(p(1000).t, 1);
+  assert.equal(p(1000).alpha, 1);
+  assert.ok(p(1600).alpha < 1 && p(1600).alpha > 0);
+  assert.equal(p(1900).alpha, 0);
   assert.equal(p(2300).t, p(100).t); // loops
-  // easing out: the first half of the time covers more than half the way
-  assert.ok(p(550).t > 0.5);
+  // M3 emphasized decelerate: most of the way is covered early
+  assert.ok(p(200).t > 0.4);
 });
 
-test("the shape is triangles, the tip on the path, and the halo is larger", () => {
+test("the outline is one closed polygon with the tip on the path", () => {
   const ends = { from: { x: 0, z: 0 }, to: { x: 20, z: -10 } };
-  const fill = arrowShape(ends, 0.6);
-  const halo = arrowShape(ends, 0.6, { inflate: 0.5 });
-  assert.equal(fill.triangles.length % 3, 0);
-  assert.ok(fill.triangles.length >= 9);
-  assert.ok(fill.triangles.flat().every(Number.isFinite));
+  const fill = arrowOutline(ends, 0.6);
+  assert.ok(fill.outline.length >= 5);
+  assert.ok(fill.outline.flat().every(Number.isFinite));
   const c = curveAt(ends.from, ends.to, 0.6);
   assert.ok(near(fill.tip.x, c.x) && near(fill.tip.z, c.z));
-  const span = (s) => {
-    const xs = s.triangles.map((v) => v[0]);
-    const zs = s.triangles.map((v) => v[1]);
-    return Math.max(...xs) - Math.min(...xs) + Math.max(...zs) - Math.min(...zs);
-  };
-  assert.ok(span(halo) > span(fill));
+  assert.ok(fill.outline.some((q) => near(q[0], c.x) && near(q[1], c.z)));
+  // no repeated points (the polygon is simple enough to triangulate)
+  const keys = new Set(fill.outline.map((q) => q.map((v) => v.toFixed(5)).join()));
+  assert.equal(keys.size, fill.outline.length);
+  // a smaller scale makes a smaller arrow
+  const span = (o) => Math.max(...o.map((q) => q[0])) - Math.min(...o.map((q) => q[0]));
+  assert.ok(span(arrowOutline(ends, 0.6, { scale: 0.5 }).outline) < span(fill.outline));
   // a still arrow (t = 1, whole tail) spans the whole path
-  const still = arrowShape(ends, 1, { tail: 1 });
-  assert.ok(still.triangles.some((v) => near(v[0], 0, 1.5) && near(v[1], 0, 1.5)));
+  const still = arrowOutline(ends, 1, { tail: 1 });
+  assert.ok(still.outline.some((q) => near(q[0], 0, 1.5) && near(q[1], 0, 1.5)));
+  // at the very start there is only a head
+  assert.ok(arrowOutline(ends, 0).outline.length >= 3);
 });

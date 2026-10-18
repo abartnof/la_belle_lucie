@@ -20,7 +20,7 @@
 // Hooks: `hooks.margins()` may give the margins; `hooks.focus(fan)` is told as the
 // keyboard moves between fans.
 
-import { BufferAttribute, BufferGeometry, CanvasTexture, DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry, Plane, Raycaster, SRGBColorSpace, Vector2, Vector3, Quaternion, PointLight, RingGeometry } from "three";
+import { CanvasTexture, DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry, Plane, Raycaster, SRGBColorSpace, Vector2, Vector3, Quaternion, PointLight, RingGeometry } from "three";
 import { EFFECTS, createRedeal } from "./redeal-fx.js";
 import { createFxRun } from "./fx-run.js";
 import { createDeck, INKS } from "../../kit/js/deck.js";
@@ -29,7 +29,8 @@ import { jumboTextures, largeTextHere } from "../../kit/js/faces.js";
 import { lying, slide } from "../../kit/js/kinematics.js";
 import { createScene } from "../../kit/js/scene.js";
 import { CARD as UNITS_CARD } from "../../kit/js/units.js";
-import { CYCLE_MS, arrowEnds, arrowShape, phase } from "./arrow.js";
+import { CYCLE_MS, arrowEnds, arrowOutline, phase } from "./arrow.js";
+import { createArrowMesh } from "./arrow-mesh.js";
 import { backTexture, classicTextures } from "./classic.js";
 import { CARD, LIFT, MARGINS, SUITS, cardName, hitSlot, layout } from "./layout.js";
 import { CONTRAST_BG, FOCUS_BLUE, dimLevels, faceKind as faceKindFor, invertPixels } from "./look.js";
@@ -189,44 +190,25 @@ export function createTable(canvas, hooks = {}) {
   const slotMesh = (i) => (slotMeshes[i] ??= makePlace(fanTexture));
 
   // ---- the hint arrow ------------------------------------------------------
-  // Two flat meshes (a white halo under the blue arrow) above the cards, drawn
-  // on top of everything, never hit by a click (the picker only tests cards).
-  const ARROW_Y = LIFT + 1;
-  const ARROW_TRIS = 40;
-  function arrowMesh(color, order, y) {
-    const geometry = new BufferGeometry();
-    geometry.setAttribute("position", new BufferAttribute(new Float32Array(ARROW_TRIS * 9), 3));
-    geometry.setDrawRange(0, 0);
-    const material = new MeshBasicMaterial({ color, transparent: true, depthTest: false, depthWrite: false, fog: false, side: DoubleSide });
-    const mesh = new Mesh(geometry, material);
-    mesh.renderOrder = order;
-    mesh.frustumCulled = false;
-    mesh.visible = false;
-    mesh.raycast = () => {};
-    mesh.userData.y = y;
-    scene.add(mesh);
-    return mesh;
-  }
-  const arrowHalo = arrowMesh("#ffffff", 20, ARROW_Y);
-  const arrowFill = arrowMesh(BLUE, 21, ARROW_Y + 0.02);
+  // A solid arrow floating above the cards: toon shaded and inked like them, and
+  // casting a shadow on the cards and the table. Never hit by a click (the
+  // picker only tests cards). It grows in, flies, rests and shrinks away.
+  const ARROW_Y = LIFT + 2.2;
+  const ARROW_THICK = 0.7;
+  const arrowSolid = createArrowMesh(stage, BLUE);
   let arrow = null; // { ends, start } while a hint with a move shows
 
-  function fillArrow(mesh, shape) {
-    const a = mesh.geometry.attributes.position;
-    const n = Math.min(shape.triangles.length, ARROW_TRIS * 3);
-    for (let i = 0; i < n; i++) a.setXYZ(i, shape.triangles[i][0], mesh.userData.y, shape.triangles[i][1]);
-    a.needsUpdate = true;
-    mesh.geometry.setDrawRange(0, n);
-  }
   function drawArrow(now) {
     if (!arrow) return false;
     const still = speedInstant();
     const { t, alpha } = still ? { t: 1, alpha: 1 } : phase(now - arrow.start);
-    const opts = still ? { tail: 1 } : {};
-    fillArrow(arrowHalo, arrowShape(arrow.ends, t, { ...opts, inflate: 0.55 }));
-    fillArrow(arrowFill, arrowShape(arrow.ends, t, opts));
-    arrowHalo.material.opacity = arrowFill.material.opacity = alpha;
-    arrowHalo.visible = arrowFill.visible = alpha > 0;
+    if (alpha < 0.03) {
+      arrowSolid.hide();
+    } else {
+      const { outline } = arrowOutline(arrow.ends, t, { tail: still ? 1 : 0.4, scale: alpha });
+      // It also settles down onto its height as it grows.
+      arrowSolid.set(outline, ARROW_Y - (1 - alpha) * 1.5, ARROW_THICK * alpha);
+    }
     dirty = true;
     return !still;
   }
@@ -234,7 +216,7 @@ export function createTable(canvas, hooks = {}) {
     const ends = hint?.move && lay ? arrowEnds(lay, hint) : null;
     if (!ends) {
       arrow = null;
-      arrowHalo.visible = arrowFill.visible = false;
+      arrowSolid.hide();
       dirty = true;
       return;
     }
@@ -785,7 +767,7 @@ export function createTable(canvas, hooks = {}) {
       return s && screenOfPoint(s.cx, 0, s.cz);
     },
     // The hint arrow on show, for tests: its ends and whether it is drawn.
-    arrow: () => (arrow ? { ...arrow.ends, visible: arrowFill.visible, cycle: CYCLE_MS } : null),
+    arrow: () => (arrow ? { ...arrow.ends, visible: arrowSolid.mesh.visible, cycle: CYCLE_MS } : null),
     // Whether anything is still moving, and the frames drawn.
     busy: () => [...entries.values()].some((e) => e.anim) || !!camAnim || !!fx,
     // For tests: take the redeal animation's clock (true), then step it by seconds
