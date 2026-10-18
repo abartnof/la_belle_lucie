@@ -181,6 +181,8 @@ def main() -> int:
         st = state(page)
         if redeal.is_enabled() != ("redeal" in st["legal"]):
             bad("buttons: Redeal should match state.legal")
+        if ("lbl-ready" in (redeal.get_attribute("class") or "")) != ("redeal" in st["legal"]):
+            bad("buttons: Redeal should light up exactly when no other move is left")
         cam = "JSON.stringify([window.lbl.table.stage.camera.position, window.lbl.table.stage.camera.fov])"
         cam0 = page.evaluate(cam)
         page.get_by_role("button", name="Hint").click()
@@ -208,6 +210,22 @@ def main() -> int:
             settle(page)
             if undo.is_enabled():
                 bad("buttons: Undo should be disabled again after undoing to the start")
+        # Follow the hints until stuck: the Redeal button must then be lit, and not before.
+        for _ in range(120):
+            st = state(page)
+            if st["prompt"] != "play" or "redeal" in st["legal"]:
+                break
+            page.evaluate("window.lbl.send('hint')")
+            hint = state(page)["hint"]
+            if not hint:
+                break
+            page.evaluate("(m) => window.lbl.send(m.startsWith('draw') ? m : 'move ' + m)", hint["move"])
+        st = state(page)
+        if "redeal" in st["legal"]:
+            if "lbl-ready" not in (redeal.get_attribute("class") or ""):
+                bad("buttons: Redeal should be lit when no other move is left")
+        else:
+            bad(f"buttons: following hints never got stuck (prompt {st['prompt']})")
         # Redeal until none is left: the button goes disabled with 0 redeals.
         for _ in range(3):
             st = state(page)

@@ -282,6 +282,10 @@ export function createUi(root, hooks) {
     set(bHint, playing);
     set(bRedeal, playing && next.legal.includes("redeal"));
     bRedeal.textContent = `Redeal (${next.redeals_left})`;
+    // Lit only when it is the one thing left to do: the engine offers a redeal when no other move exists.
+    const ready = playing && next.legal.includes("redeal");
+    bRedeal.classList.toggle("lbl-ready", ready);
+    bRedeal.title = ready ? "No other move is left: gather the cards and deal again" : "";
     applyHintsSetting();
     if (next.hint && prefs.settings.hints && playing) {
       const t = hintText(next.hint, next);
