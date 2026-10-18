@@ -19,21 +19,35 @@
 // keyboard moves between fans.
 
 import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, Plane, Raycaster, SRGBColorSpace, Vector2, Vector3 } from "three";
-import { createDeck } from "../../kit/js/deck.js";
+import { createDeck, INKS } from "../../kit/js/deck.js";
 import { M3 } from "../../kit/js/easing.js";
-import { facesFor, jumboTextures, largeTextHere } from "../../kit/js/faces.js";
+import { jumboTextures, largeTextHere } from "../../kit/js/faces.js";
 import { lying, slide } from "../../kit/js/kinematics.js";
 import { createScene } from "../../kit/js/scene.js";
 import { CARD as UNITS_CARD } from "../../kit/js/units.js";
 import { backTexture, classicTextures } from "./classic.js";
 import { CARD, LIFT, MARGINS, SUITS, cardName, hitSlot, layout } from "./layout.js";
+import { CONTRAST_BG, dimLevels, faceKind as faceKindFor, invertPixels } from "./look.js";
 
 const CODES = [...SUITS].flatMap((s) => [..."A23456789TJQK"].map((r) => r + s));
 const RANKS = "A23456789TJQK";
 const MOVE_MS = 420;
 const CAMERA_MS = 380;
 const DOUBLE_MS = 380;
-const SLOT_COLOUR = { plain: "#8a93a3", chosen: "#e8900c", hint: "#009fb7", focus: "#1d2433" };
+// Colour is semantic and the rest is grey: a hint is a bold blue, the chosen
+// card amber, a place it may go a thinner amber, a hover or focus the ink.
+// The kit is vendored, so its ink language is overridden here, before any deck.
+const BLUE = "#0a4fd8";
+const AMBER = "#e8900c";
+const GREY_INK = "#1a1a1a";
+Object.assign(INKS, {
+  plain: { color: GREY_INK },
+  hover: { color: GREY_INK, heavier: 1.5 },
+  hint: { color: BLUE, heavier: 3.4 },
+  chosen: { color: AMBER, heavier: 2.2 },
+  target: { color: "#c47400", heavier: 1.5 },
+});
+const SLOT_COLOUR = { plain: "#8c8c8c", chosen: AMBER, target: "#c47400", hint: BLUE, focus: GREY_INK };
 
 const reducedMotion = () => {
   try {
@@ -117,8 +131,22 @@ export function createTable(canvas, hooks = {}) {
   const width = faceWidth();
   const back = backTexture({ width: Math.min(width, 256), anisotropy });
   const sets = {};
-  const faceSet = (kind) => (sets[kind] ??= (kind === "jumbo" ? jumboTextures : classicTextures)(CODES, { width, anisotropy }));
-  let faceKind = facesFor(settings.faces, touch);
+  function contrastTextures() {
+    const base = jumboTextures(CODES, { width, anisotropy });
+    for (const code of CODES) {
+      const bg = CONTRAST_BG[code[1]];
+      if (!bg) continue;
+      const canvas = base[code].image;
+      const g = canvas.getContext("2d");
+      const img = g.getImageData(0, 0, canvas.width, canvas.height);
+      invertPixels(img.data, bg);
+      g.putImageData(img, 0, 0);
+      base[code].needsUpdate = true;
+    }
+    return base;
+  }
+  const faceSet = (kind) => (sets[kind] ??= (kind === "classic" ? classicTextures(CODES, { width, anisotropy }) : kind === "contrast" ? contrastTextures() : jumboTextures(CODES, { width, anisotropy })));
+  let faceKind = faceKindFor(settings.faces);
   const textures = { faces: { ...faceSet(faceKind) }, back };
   const deck = createDeck(stage, textures);
 
@@ -284,15 +312,22 @@ export function createTable(canvas, hooks = {}) {
     const kbCard = kb === "home" ? null : kb !== null ? topOfFan(kb) : null;
     set(hover, "hover");
     set(kbCard, "hover");
-    for (const t of marks.targets) set(targetCard(t), "hint");
+    for (const t of marks.targets) set(targetCard(t), "target");
     for (const t of marks.hint?.targets ?? []) set(targetCard(t), "hint");
     for (const c of marks.hint?.cards ?? []) set(c, "hint");
     set(marks.select, "chosen");
-    for (const [code, e] of entries) deck.decorate(e.mesh, { line: lines.get(code) ?? "plain" });
+    // A card under another (or with nowhere to go) is dimmed so the top cards
+    // stand clear; any card inked for attention is shown as printed.
+    const dims = dimLevels(state);
+    for (const [code, e] of entries) {
+      const line = lines.get(code) ?? "plain";
+      deck.decorate(e.mesh, { line });
+      if (Array.isArray(e.mesh.material)) e.mesh.material[0].color.setScalar(line === "plain" ? dims.get(code) ?? 1 : 1);
+    }
     // The empty places.
     const tinted = new Map();
     const tint = (m, k) => m && tinted.set(m, k);
-    for (const t of marks.targets) tint(placeMesh(t), "hint");
+    for (const t of marks.targets) tint(placeMesh(t), "target");
     for (const t of marks.hint?.targets ?? []) tint(placeMesh(t), "hint");
     if (kb === "home") homeMeshes.forEach((m) => tint(m, "focus"));
     else if (kb !== null) tint(slotMeshes[kb], "focus");
@@ -496,7 +531,7 @@ export function createTable(canvas, hooks = {}) {
       const was = settings;
       settings = { ...settings, ...s };
       if (settings.table !== was.table) stage.setSurface(settings.table);
-      const kind = facesFor(settings.faces, touch);
+      const kind = faceKindFor(settings.faces);
       if (kind !== faceKind) {
         faceKind = kind;
         deck.setFaces(faceSet(kind));

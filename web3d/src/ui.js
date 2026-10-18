@@ -10,7 +10,7 @@ import { PATTERNS } from "../../kit/js/surfaces.js";
 import { parseTutorial } from "../../kit/js/tutorial.js";
 import TUTORIAL from "../tutorial.md";
 import { hintText } from "./hints.js";
-import { loadPrefs, savePrefs, defaultStore, decodeRules, encodeRules, stepRedeals, PRESETS, OPTIONS, presetOf, parseSeed, FACES } from "./prefs.js";
+import { loadPrefs, savePrefs, defaultStore, decodeRules, encodeRules, stepRedeals, PRESETS, OPTIONS, presetOf, parseSeed } from "./prefs.js";
 import { duePage, pageNote, PAGE_KEYS } from "./tutorial-flow.js";
 
 const DRAW_WORDS = { later: "on the last deal", ready: "ready", used: "used" };
@@ -95,7 +95,7 @@ export function createUi(root, hooks) {
     return { node: el("li", { class: "lbl-stat" }, el("span", { class: "lbl-k" }, name), " ", value), value };
   };
   const sHome = stat("Home");
-  const sRedeals = stat("Redeals");
+  const sRedeals = stat("Redeals remaining");
   const sDraw = stat("Draw");
   const sMoves = stat("Moves");
   const hud = el("ul", { class: "lbl-hud", "aria-label": "Game status" }, sHome.node, sRedeals.node, sDraw.node, sMoves.node);
@@ -111,7 +111,7 @@ export function createUi(root, hooks) {
   const sr = el("p", { class: "lbl-sr", "aria-live": "polite" });
   const hintDo = el("p", { class: "lbl-hint-do" });
   const hintWhy = el("p", { class: "lbl-hint-why" });
-  const hintClose = button("Dismiss", () => hideHint(), "lbl-quiet lbl-small", { "aria-label": "Dismiss hint" });
+  const hintClose = button("\u00d7", () => hideHint(), "lbl-quiet lbl-small lbl-x", { "aria-label": "Dismiss hint" });
   const hintBox = el("div", { class: "lbl-hint", role: "status", "aria-live": "polite", hidden: true }, hintDo, hintWhy, hintClose);
   function hideHint() {
     hintBox.hidden = true;
@@ -196,7 +196,7 @@ export function createUi(root, hooks) {
     return el("div", { class: "lbl-field" }, el("label", { for: id }, el("input", { type: "checkbox", id, checked: prefs.settings[key], onchange: (e) => changed({ [key]: e.target.checked }) }), " ", label), el("p", { class: "lbl-note", id: `${id}-d` }, words));
   }
   function select(id, label, options, key, words) {
-    const sel = el("select", { id, "aria-describedby": words ? `${id}-d` : false, onchange: (e) => changed({ [key]: e.target.value }) }, options.map(([v, t]) => el("option", { value: v, selected: v === prefs.settings[key] }, t)));
+    const sel = el("select", { id, "aria-describedby": words ? `${id}-d` : false, onchange: (e) => changed({ [key]: e.target.value }) }, options.map(([v, t]) => el("option", { value: v, selected: v === (prefs.settings[key] === "jumbo" ? "auto" : prefs.settings[key]) }, t)));
     return el("div", { class: "lbl-field" }, el("label", { for: id }, label), " ", sel, words ? el("p", { class: "lbl-note", id: `${id}-d` }, words) : null);
   }
   function openSettings() {
@@ -207,7 +207,7 @@ export function createUi(root, hooks) {
       check("lbl-s-home", "Play cards home automatically", "A card that can go home goes at once, with no click.", "autoHome"),
       check("lbl-s-moves", "Count moves", "Shows the move count.", "showMoves"),
       select("lbl-s-speed", "Animation", [["normal", "Normal"], ["instant", "Instant"]], "speed"),
-      select("lbl-s-faces", "Card faces", FACES.map((f) => [f, { auto: "Automatic", classic: "Classic", jumbo: "Jumbo" }[f]]), "faces", "Automatic uses large indices on small screens."),
+      select("lbl-s-faces", "Card faces", [["auto", "High-visibility"], ["classic", "Classic"], ["contrast", "Suit contrast"]], "faces", "High-visibility has large corner indices that stay readable where cards overlap. Suit contrast adds white-on-black clubs and white-on-red diamonds."),
       select("lbl-s-table", "Table pattern", PATTERNS.map((p) => [p.id, p.name]), "table"),
       el("p", { class: "lbl-note" }, "Rules are chosen in New game, never mid-game."),
       el("div", { class: "lbl-row" }, button("Done", () => d.close(), "", { "data-first": true })),

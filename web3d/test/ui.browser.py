@@ -181,8 +181,17 @@ def main() -> int:
         st = state(page)
         if redeal.is_enabled() != ("redeal" in st["legal"]):
             bad("buttons: Redeal should match state.legal")
+        cam = "JSON.stringify([window.lbl.table.stage.camera.position, window.lbl.table.stage.camera.fov])"
+        cam0 = page.evaluate(cam)
         page.get_by_role("button", name="Hint").click()
         page.wait_for_selector(".lbl-hint:not([hidden])", timeout=WAIT)
+        settle(page)
+        if page.evaluate(cam) != cam0:
+            bad("hint: the table must not reframe when a hint shows")
+        hb = page.locator(".lbl-hint").bounding_box()
+        hud = page.locator(".lbl-hud").bounding_box()
+        if hb["x"] + hb["width"] > hud["x"] and hb["y"] < hud["y"] + hud["height"]:
+            bad("hint: the bubble overlaps the status pill")
         do, why = page.inner_text(".lbl-hint-do"), page.inner_text(".lbl-hint-why")
         sentences = [s for s in re.split(r"(?<=[.!?])\s+", f"{do} {why}".strip()) if s]
         if len(sentences) != 2 or not do.strip().endswith(".") or not why.strip().endswith("."):

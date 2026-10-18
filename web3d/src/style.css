@@ -1,17 +1,19 @@
 /* A full-viewport canvas, and the overlay's own classes (prefix lbl-). */
-html, body { margin: 0; height: 100%; overflow: hidden; background: #1d4d36; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #edeef0; }
 #app { position: fixed; inset: 0; margin: 0; padding: 0; max-width: none; }
 canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
 :root {
-  --lbl-bg: #fffdf6; --lbl-fg: #1c1c1c; --lbl-mute: #4a4a44; --lbl-line: #8c8a80;
-  --lbl-accent: #0b5d3b; --lbl-on: #ffffff; --lbl-danger: #8e1b1b; --lbl-focus: #0a3d8f;
+  /* Greyscale chrome; colour only where it means something: red is an error
+     or a loss, blue is a hint (the table's ink), amber a choice. */
+  --lbl-bg: #f7f7f7; --lbl-fg: #1a1a1a; --lbl-mute: #4d4d4d; --lbl-line: #8a8a8a;
+  --lbl-accent: #2b2b2b; --lbl-on: #ffffff; --lbl-danger: #b3191f; --lbl-focus: #1a1a1a; --lbl-hint: #0a4fd8;
   --lbl-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --lbl-bg: #1b1f24; --lbl-fg: #f2f4f6; --lbl-mute: #bcc3cb; --lbl-line: #6b747e;
-    --lbl-accent: #8fd3a8; --lbl-on: #0d1f15; --lbl-danger: #ffb4ab; --lbl-focus: #9cc2ff;
+    --lbl-bg: #1f1f1f; --lbl-fg: #f0f0f0; --lbl-mute: #c2c2c2; --lbl-line: #767676;
+    --lbl-accent: #e6e6e6; --lbl-on: #141414; --lbl-danger: #ff9b95; --lbl-focus: #f0f0f0; --lbl-hint: #7fa8ff;
   }
 }
 
@@ -51,15 +53,24 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .lbl-ui :focus-visible, .lbl-dialog :focus-visible { outline: 3px solid var(--lbl-focus); outline-offset: 2px; }
 .lbl-link { font: inherit; background: none; border: 0; padding: 0; color: var(--lbl-accent); text-decoration: underline; cursor: pointer; }
 
-.lbl-hint, .lbl-end {
+.lbl-end {
   position: absolute; left: 8px; right: 8px; margin: 0 auto; width: min(26rem, calc(100% - 16px)); box-sizing: border-box;
   background: var(--lbl-bg); border: 1px solid var(--lbl-line); border-radius: 12px; box-shadow: var(--lbl-shadow);
   padding: 10px 14px; pointer-events: auto;
 }
-.lbl-hint { top: 64px; }
+/* The hint floats over the table, top left, and never moves it. Compact: what
+   to do, then the rule. Below the status pill on a narrow window. */
+.lbl-hint {
+  position: absolute; top: 8px; left: 8px; width: min(21rem, calc(100% - 16px)); box-sizing: border-box;
+  background: var(--lbl-bg); border: 1px solid var(--lbl-line); border-left: 5px solid var(--lbl-hint); border-radius: 10px;
+  box-shadow: var(--lbl-shadow); padding: 6px 38px 6px 10px; pointer-events: auto; font-size: 0.9rem; line-height: 1.3;
+}
 .lbl-hint p, .lbl-end p { margin: 0 0 6px; }
+.lbl-hint p { margin: 0 0 3px; }
+.lbl-hint p:last-of-type { margin: 0; }
 .lbl-hint-do { font-weight: 700; }
-.lbl-hint-why { color: var(--lbl-mute); font-size: 0.9rem; }
+.lbl-hint-why { color: var(--lbl-mute); font-size: 0.8rem; }
+.lbl-hint .lbl-x { position: absolute; top: 2px; right: 2px; min-width: 36px; min-height: 36px; padding: 0; font-size: 1.3rem; line-height: 1; border-color: transparent; }
 .lbl-end { top: 30%; text-align: center; }
 .lbl-end .lbl-row { justify-content: center; }
 
@@ -87,9 +98,14 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 @media (max-width: 480px) {
   .lbl-bar { gap: 4px; }
   .lbl-btn { padding: 0 10px; }
-  .lbl-hint { top: 96px; }
   .lbl-dialog { padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lbl-ui *, .lbl-dialog, .lbl-dialog * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media (max-width: 899px) {
+  .lbl-hint { top: 56px; }
+}
+@media (max-width: 480px) {
+  .lbl-hint { top: 96px; }
 }

@@ -8,7 +8,7 @@ const KEY = "la-belle-lucie.prefs";
 const VERSION = 1;
 
 export const TABLES = Object.freeze(PATTERNS.map((p) => p.id));
-export const FACES = Object.freeze(["auto", "classic", "jumbo"]);
+export const FACES = Object.freeze(["auto", "classic", "jumbo", "contrast"]);
 export const SPEEDS = Object.freeze(["normal", "instant"]);
 
 // Superficial settings: look, motion, aids.

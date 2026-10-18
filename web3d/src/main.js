@@ -77,7 +77,9 @@ export async function run(makeEngine) {
   };
   function margins() {
     const h = window.innerHeight || 1;
-    const top = [".lbl-hud", ".lbl-hint"].map(px).filter(Boolean).reduce((m, r) => Math.max(m, (r.bottom + 6) / h), 0);
+    // Only the fixed strips: the hint bubble floats over the table and never
+    // moves it.
+    const top = [".lbl-hud"].map(px).filter(Boolean).reduce((m, r) => Math.max(m, (r.bottom + 6) / h), 0);
     const bar = px(".lbl-bar");
     return { ...(top ? { top } : {}), ...(bar ? { bottom: (h - bar.top + 6) / h } : {}) };
   }

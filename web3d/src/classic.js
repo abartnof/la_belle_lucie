@@ -1,8 +1,10 @@
 // Classic card faces and a card back, drawn on a canvas (the kit has no vector
-// art for a pack: its jumbo faces are all it draws). Corner indices top left
-// and, turned about, bottom right; the number cards carry their pips in the
-// usual places, the aces one large pip, the court cards a framed letter. The
-// pips are paths, so no symbol font decides how a suit looks.
+// art for a pack: its jumbo faces are all it draws). Piquet's canonical art
+// (a CC0 deck) was considered and not used: it holds no 2-6, weighs about 1.5 MB
+// for 52 faces, and its court cards are the busy look the maintainer asked
+// to leave. These are decluttered: a large index top left, the pips in the usual
+// places, the aces one large pip, the court cards one large letter. The pips
+// are paths, so no symbol font decides how a suit looks.
 //
 // Not owned by anyone else: the table agent's, with table.js.
 
@@ -10,7 +12,7 @@ import { CanvasTexture } from "three";
 import { JUMBO, rankAndSuit } from "../../kit/js/faces.js";
 import { cardTexture } from "../../kit/js/materials.js";
 
-const RANK_FONT = "Georgia, 'Times New Roman', serif";
+const RANK_FONT = "-apple-system, system-ui, 'Segoe UI', 'DejaVu Sans', sans-serif";
 const COLOUR = { S: JUMBO.ink, C: JUMBO.ink, H: JUMBO.red, D: JUMBO.red };
 
 // A suit's pip centred on (0, 0) in a box `s` wide, as a path on `g`.
@@ -76,53 +78,41 @@ const PIPS = {
   10: [[0, 0], [2, 0], [1, 1 / 6], [0, 1 / 3], [2, 1 / 3], [0, 2 / 3], [2, 2 / 3], [1, 5 / 6], [0, 1], [2, 1]],
 };
 
+// Plain on purpose: one large index at the top left, in the strip a fanned
+// card shows, and the pips (or one large letter for a court card) in the room
+// to its right. No turned corner, no frame, no ornament.
 export function drawClassic(g, width, code) {
   const [rank, suit] = rankAndSuit(code);
   const u = width / JUMBO.w;
   const height = JUMBO.h * u;
   g.fillStyle = JUMBO.paper;
   g.fillRect(0, 0, width, height);
-  g.fillStyle = COLOUR[suit];
   g.textAlign = "center";
   g.textBaseline = "alphabetic";
-  const corner = (turned) => {
+  g.fillStyle = COLOUR[suit];
+  const axis = 1.45 * u;
+  g.font = `700 ${2.4 * u}px ${RANK_FONT}`;
+  if (rank === "10") {
     g.save();
-    if (turned) {
-      g.translate(width, height);
-      g.rotate(Math.PI);
-    }
-    g.fillStyle = COLOUR[suit];
-    g.font = `700 ${1.55 * u}px ${RANK_FONT}`;
-    const wide = rank === "10";
-    g.save();
-    if (wide) {
-      g.translate(0.8 * u, 1.55 * u);
-      g.scale(0.78, 1);
-      g.fillText(rank, 0, 0);
-    } else g.fillText(rank, 0.8 * u, 1.55 * u);
+    g.translate(axis, 2.6 * u);
+    g.scale(0.72, 1);
+    g.fillText(rank, 0, 0);
     g.restore();
-    pip(g, suit, 0.8 * u, 2.35 * u, 1.0 * u);
-    g.restore();
-  };
-  corner(false);
-  corner(true);
+  } else g.fillText(rank, axis, 2.6 * u);
+  pip(g, suit, axis, 4.0 * u, 1.9 * u);
   const key = rank === "10" ? 10 : rank;
+  const mid = 4.95 * u;
   if (PIPS[key]) {
-    const xs = [2.25 * u, 3.5 * u, 4.75 * u];
-    const top = 1.75 * u;
-    const span = 6.3 * u;
-    const size = key === "A" ? 3.4 * u : 1.35 * u;
-    for (const [c, r] of PIPS[key]) pip(g, suit, xs[c], top + r * span, size, r > 0.5);
+    const xs = [3.95 * u, mid, 5.95 * u];
+    const top = 1.3 * u;
+    const span = 7.2 * u;
+    const size = key === "A" ? 3.6 * u : 1.6 * u;
+    for (const [c, r] of PIPS[key]) pip(g, suit, xs[c], top + r * span, size);
   } else {
-    // A court card: a framed panel, the letter large, a pip at two corners.
-    g.strokeStyle = COLOUR[suit];
-    g.lineWidth = 0.12 * u;
-    g.strokeRect(1.7 * u, 1.5 * u, 3.6 * u, 6.8 * u);
     g.fillStyle = COLOUR[suit];
-    g.font = `700 ${3.4 * u}px ${RANK_FONT}`;
-    g.fillText(rank, 3.5 * u, 5.6 * u);
-    pip(g, suit, 3.5 * u, 3.0 * u, 1.3 * u);
-    pip(g, suit, 3.5 * u, 6.8 * u, 1.3 * u, true);
+    g.font = `700 ${5.2 * u}px ${RANK_FONT}`;
+    g.fillText(rank, mid, 5.0 * u);
+    pip(g, suit, mid, 7.2 * u, 2.0 * u);
   }
 }
 
