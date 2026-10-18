@@ -62,6 +62,13 @@ def run_size(browser, page_url, name, w, h, touch, shots, problems, requests):
     page.on("pageerror", lambda e: problems.append(f"{name}: page error: {e}"))
     page.on("request", lambda r: requests.append(r.url))
     page.goto(page_url + "#seed=7&rules=4")
+    # The menu comes first: nothing is dealt until Deal is clicked, and the hash prefills it.
+    page.wait_for_selector("dialog[open] #lbl-seed", timeout=WAIT)
+    if page.evaluate("window.lbl.state()") is not None:
+        problems.append(f"{name}: a game was dealt before Deal was clicked")
+    if page.input_value("#lbl-seed") != "7" or not page.locator("#lbl-p-classic").is_checked():
+        problems.append(f"{name}: the hash should prefill the menu with seed 7 and Classic")
+    page.get_by_role("button", name="Deal", exact=True).click()
     page.wait_for_function("window.lbl && window.lbl.state()", timeout=WAIT)
     settle(page)
     state = page.evaluate("window.lbl.state()")

@@ -3,6 +3,7 @@
 // blocked, and the page then starts from the defaults.
 
 import { PATTERNS } from "../../kit/js/surfaces.js";
+import { EFFECTS } from "./redeal-fx.js";
 
 const KEY = "la-belle-lucie.prefs";
 const VERSION = 1;
@@ -10,6 +11,8 @@ const VERSION = 1;
 export const TABLES = Object.freeze(PATTERNS.map((p) => p.id));
 export const FACES = Object.freeze(["auto", "classic", "jumbo", "contrast"]);
 export const SPEEDS = Object.freeze(["normal", "instant"]);
+// How a redeal moves: a different effect each time, one of them, or the plain slide.
+export const REDEAL_FX = Object.freeze(["random", ...EFFECTS, "simple"]);
 
 // Superficial settings: look, motion, aids.
 export const DEFAULTS = Object.freeze({
@@ -18,6 +21,7 @@ export const DEFAULTS = Object.freeze({
   faces: "auto",
   autoHome: false,
   speed: "normal",
+  redealFx: "random",
   highlight: true,
   showMoves: true,
 });
@@ -32,6 +36,7 @@ function checked(kept, reducedMotion) {
   for (const key of ["hints", "autoHome", "highlight", "showMoves"]) if (isBool(k[key])) out[key] = k[key];
   if (TABLES.includes(k.table)) out.table = k.table;
   if (FACES.includes(k.faces)) out.faces = k.faces;
+  if (REDEAL_FX.includes(k.redealFx)) out.redealFx = k.redealFx;
   out.speed = SPEEDS.includes(k.speed) ? k.speed : reducedMotion ? "instant" : DEFAULTS.speed;
   return {
     settings: out,

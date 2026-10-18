@@ -8,6 +8,7 @@
 import { decodeBase64 } from "../../kit/js/engine.js";
 import { loadEngine } from "./engine.js";
 import { cardName } from "./layout.js";
+import { firstMenu } from "./menu-start.js";
 import { defaultStore, loadPrefs } from "./prefs.js";
 import { decide, targetsOf } from "./selection.js";
 import { createTable } from "./table.js";
@@ -65,7 +66,9 @@ export async function run(makeEngine) {
 
   let state = null;
   let sel = null;
+  let hintDismissed = false;
   let ui = null;
+  let animating = false; // a redeal is playing: clicks and hints wait
   let settings = { autoHome: false, highlight: true, speed: "normal" };
 
   // The overlay's strips, so the table is framed between them.
@@ -84,12 +87,18 @@ export async function run(makeEngine) {
     return { ...(top ? { top } : {}), ...(bar ? { bottom: (h - bar.top + 6) / h } : {}) };
   }
 
-  const table = createTable(canvas, { margins });
+  const table = createTable(canvas, {
+    margins,
+    busy(on) {
+      animating = on;
+      ui?.busy(on);
+    },
+  });
   const announce = (text) => table.announce(text);
 
   function paint() {
     const targets = settings.highlight ? targetsOf(state, sel) : [];
-    const hint = state.hint && state.prompt === "play" ? hintMarks(state.hint) : null;
+    const hint = state.hint && state.prompt === "play" && settings.hints !== false && !hintDismissed ? hintMarks(state.hint) : null;
     table.highlight({ select: sel?.card ?? null, targets, hint });
   }
 
@@ -99,13 +108,14 @@ export async function run(makeEngine) {
     const m = /^(?:draw f\d+:\d+|f(\d+))>(h|f(\d+))$/.exec(h.move);
     if (m && m[2] === "h") targets.push({ home: true, suit: h.card[1] });
     else if (m && m[3] !== undefined && !h.onto) targets.push({ fan: Number(m[3]) });
-    return { cards: [h.card, h.onto].filter(Boolean), targets };
+    return { cards: [h.card, h.onto].filter(Boolean), targets, move: h.move, card: h.card, onto: h.onto };
   }
 
-  function setState(next, { instant = false, say = null } = {}) {
+  function setState(next, { instant = false, say = null, redeal = false } = {}) {
     state = next;
     sel = null;
-    table.show(state, { instant });
+    hintDismissed = false;
+    table.show(state, { instant, redeal });
     paint();
     ui.update(state);
     table.setMargins({});
@@ -115,14 +125,14 @@ export async function run(makeEngine) {
   }
 
   function send(command) {
-    if (stopped) return;
+    if (stopped || animating) return;
     const result = engine.send(command);
     if (!result?.ok) {
       announce("That move is not allowed.");
       return;
     }
-    setState(result.state);
-    if (command === "hint" && state.hint) announce(`Hint: move the ${cardName(state.hint.card)}.`);
+    setState(result.state, { redeal: command.trim() === "redeal" });
+    if (command === "hint" && state.hint) announce(state.hint.card ? `Hint: move the ${cardName(state.hint.card)}.` : "Hint: take a redeal.");
   }
 
   function newGame({ seed, rules }) {
@@ -142,6 +152,10 @@ export async function run(makeEngine) {
     newGame,
     undo: () => send("undo"),
     hint: () => send("hint"),
+    hintDismissed: () => {
+      hintDismissed = true;
+      paint();
+    },
     redeal: () => state.legal.includes("redeal") && send("redeal"),
     settingsChanged(s) {
       settings = { ...settings, ...s };
@@ -153,7 +167,7 @@ export async function run(makeEngine) {
   table.setSettings(settings);
 
   table.onClick((ev) => {
-    if (!state || stopped) return;
+    if (!state || stopped || animating) return;
     const d = decide(state, sel, ev, { autoHome: settings.autoHome });
     if (d.kind === "send") send(d.command);
     else if (d.kind === "select") {
@@ -172,7 +186,8 @@ export async function run(makeEngine) {
 
   const given = parseHash(window.location.hash);
   const prefs = loadPrefs(defaultStore());
-  newGame({ seed: given.seed, rules: given.rules ?? prefs.rules ?? DEFAULT_RULES });
+  // Nothing is dealt until the player confirms in the menu.
+  ui.openMenu({ ...firstMenu(given, prefs), first: true });
 
   // For tests and the curious: a read-only window onto the page.
   window.lbl = { state: () => state, table, send: (c) => send(c), selected: () => sel, stopped: () => stopped };

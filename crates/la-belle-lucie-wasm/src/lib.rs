@@ -122,6 +122,9 @@ impl Session {
 /// kit/js/engine.js): `_alloc`, `_out`, `_out_len`; the game adds `_new` and `_send`.
 pub mod ffi {
     use super::Session;
+
+    /// The longest command the input buffer holds.
+    const MAX_COMMAND: usize = 4096;
     use std::cell::RefCell;
 
     thread_local! {
@@ -137,7 +140,9 @@ pub mod ffi {
         IN.with(|buffer| {
             let mut buffer = buffer.borrow_mut();
             buffer.clear();
-            buffer.resize(len, 0);
+            // A command is a few bytes: a host asking for more than a page is wrong, and an
+            // allocation that fails would trap the module.
+            buffer.resize(len.min(MAX_COMMAND), 0);
             buffer.as_mut_ptr()
         })
     }

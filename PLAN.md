@@ -12,6 +12,7 @@ Where things stand. Keep this current as work lands.
   tutorial (three pages before the first move, others just in time), two-sentence hints,
   settings (look and aids) and a new-game menu (rules, with sources, and a deal number).
 - `web3d/test/ui.browser.py` tests the UI in Chromium (tutorial, settings, new game, hints, undo/redeal, help, focus, reduced motion); Trefoil's pre-placed aces are on the foundations page.
+- New games always start at the New game menu: the page deals nothing on load (a hash only prefills the menu).
 - Hint play wins about 16% of Classic deals over 300 games (engine test; research/sim has the
   search lower bound of 19% and greedy 5.7%).
 

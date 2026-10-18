@@ -39,12 +39,20 @@ impl Dest {
     }
 }
 
-fn fan(text: &str) -> Option<usize> {
-    let digits = text.strip_prefix('f')?;
-    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
+/// A number as `text` writes it: digits only, no leading zero.
+fn number(digits: &str) -> Option<usize> {
+    let plain = !digits.is_empty()
+        && digits.bytes().all(|b| b.is_ascii_digit())
+        && (digits == "0" || !digits.starts_with('0'));
+    if plain {
+        digits.parse().ok()
+    } else {
+        None
     }
-    digits.parse().ok()
+}
+
+fn fan(text: &str) -> Option<usize> {
+    number(text.strip_prefix('f')?)
 }
 
 impl Command {
@@ -57,25 +65,23 @@ impl Command {
         }
     }
 
-    /// Reads either form of a move, with or without the "move " prefix.
+    /// Reads exactly the forms `text` writes, and a move also with the "move "
+    /// prefix: no spaces elsewhere, no leading zeros, so what `send` accepts is
+    /// what `legal` lists (the caller trims a line it read).
     pub fn parse(text: &str) -> Option<Command> {
-        let text = text.trim();
         if text == "redeal" {
             return Some(Command::Redeal);
         }
         if let Some(rest) = text.strip_prefix("draw ") {
-            let (source, to) = rest.trim().split_once('>')?;
+            let (source, to) = rest.split_once('>')?;
             let (from, pos) = source.split_once(':')?;
-            if pos.is_empty() || !pos.bytes().all(|b| b.is_ascii_digit()) {
-                return None;
-            }
             return Some(Command::Draw {
                 fan: fan(from)?,
-                pos: pos.parse().ok()?,
+                pos: number(pos)?,
                 to: Dest::parse(to)?,
             });
         }
-        let rest = text.strip_prefix("move ").unwrap_or(text).trim();
+        let rest = text.strip_prefix("move ").unwrap_or(text);
         let (from, to) = rest.split_once('>')?;
         Some(Command::Move {
             from: fan(from)?,
@@ -87,6 +93,30 @@ impl Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_canonical_text_is_accepted() {
+        for bad in [
+            "f03>h",
+            "f3>f05",
+            "f00>h",
+            "draw f1:01>h",
+            "draw f01:1>h",
+            "  move   f3>h  ",
+            "move  f3>h",
+            "f3 >h",
+            "f3> h",
+            "move f3>h\n",
+            " redeal",
+            "draw  f1:1>h",
+            "MOVE f3>h",
+        ] {
+            assert_eq!(Command::parse(bad), None, "{bad:?}");
+        }
+        for good in ["f0>h", "move f0>h", "f10>f12", "draw f2:0>h", "redeal"] {
+            assert!(Command::parse(good).is_some(), "{good:?}");
+        }
+    }
 
     #[test]
     fn every_form_round_trips() {

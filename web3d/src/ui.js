@@ -3,14 +3,16 @@
 // `hooks`; it holds no rules. The canvas is a sibling the table controls; the
 // overlay lets pointer events through except on its own controls.
 //
-// createUi(root, hooks) -> { update(state), settings(), busy(bool) }
+// createUi(root, hooks) -> { update(state), settings(), busy(bool), openMenu({seed, rules}) }
+// openMenu opens the New game menu with no game behind it (the page's start): it cannot be cancelled.
 // hooks = { newGame({seed|null, rules}), undo(), hint(), redeal(), settingsChanged(settings) }
 
 import { PATTERNS } from "../../kit/js/surfaces.js";
 import { parseTutorial } from "../../kit/js/tutorial.js";
 import TUTORIAL from "../tutorial.md";
 import { hintText } from "./hints.js";
-import { loadPrefs, savePrefs, defaultStore, decodeRules, encodeRules, stepRedeals, PRESETS, OPTIONS, presetOf, parseSeed } from "./prefs.js";
+import { loadPrefs, savePrefs, defaultStore, decodeRules, encodeRules, stepRedeals, PRESETS, OPTIONS, presetOf, parseSeed, REDEAL_FX } from "./prefs.js";
+import { EFFECT_NAMES } from "./redeal-fx.js";
 import { duePage, pageNote, PAGE_KEYS } from "./tutorial-flow.js";
 
 const DRAW_WORDS = { later: "on the last deal", ready: "ready", used: "used" };
@@ -64,14 +66,18 @@ export function createUi(root, hooks) {
       (opener?.isConnected ? opener : null)?.focus?.();
       api.onclose?.();
     });
+    node.addEventListener("cancel", (e) => {
+      if (api.locked) e.preventDefault();
+    });
     node.addEventListener("click", (e) => {
-      if (e.target === node) node.close();
+      if (e.target === node && !api.locked) node.close();
     });
     const api = {
       node,
       body,
       heading,
       onclose: null,
+      locked: false,
       open() {
         opener = document.activeElement;
         openDialog = api;
@@ -81,6 +87,7 @@ export function createUi(root, hooks) {
         (node.querySelector("[data-first]") ?? node.querySelector("button, input, select"))?.focus();
       },
       close() {
+        if (openDialog === api) openDialog = null;
         if (typeof node.close === "function") node.close();
         else node.removeAttribute("open");
       },
@@ -111,7 +118,7 @@ export function createUi(root, hooks) {
   const sr = el("p", { class: "lbl-sr", "aria-live": "polite" });
   const hintDo = el("p", { class: "lbl-hint-do" });
   const hintWhy = el("p", { class: "lbl-hint-why" });
-  const hintClose = button("\u00d7", () => hideHint(), "lbl-quiet lbl-small lbl-x", { "aria-label": "Dismiss hint" });
+  const hintClose = button("\u00d7", () => { hideHint(); hooks.hintDismissed?.(); }, "lbl-quiet lbl-small lbl-x", { "aria-label": "Dismiss hint" });
   const hintBox = el("div", { class: "lbl-hint", role: "status", "aria-live": "polite", hidden: true }, hintDo, hintWhy, hintClose);
   function hideHint() {
     hintBox.hidden = true;
@@ -125,10 +132,11 @@ export function createUi(root, hooks) {
     { class: "lbl-end", hidden: true, "aria-label": "Game over" },
     endTitle,
     endText,
-    el("div", { class: "lbl-row" }, button("New game", () => openNewGame(), "", { "data-first": true }), button("Same deal again", () => hooks.newGame({ seed: state.seed, rules: state.rules }), "lbl-quiet")),
+    el("div", { class: "lbl-row" }, button("New game", () => openNewGame(), "lbl-primary", { "data-first": true }), button("Same deal again", () => hooks.newGame({ seed: state.seed, rules: state.rules }), "lbl-quiet")),
   );
 
-  const layer = el("div", { class: "lbl-ui" }, hud, hintBox, end, bar, sr);
+  // No game yet: the strips stay hidden until the first deal (the menu is all there is).
+  const layer = el("div", { class: "lbl-ui lbl-idle" }, hud, hintBox, end, bar, sr);
   root.append(layer);
 
   // ---- the tutorial -----------------------------------------------------------
@@ -207,6 +215,7 @@ export function createUi(root, hooks) {
       check("lbl-s-home", "Play cards home automatically", "A card that can go home goes at once, with no click.", "autoHome"),
       check("lbl-s-moves", "Count moves", "Shows the move count.", "showMoves"),
       select("lbl-s-speed", "Animation", [["normal", "Normal"], ["instant", "Instant"]], "speed"),
+      select("lbl-s-redeal", "Redeal animation", REDEAL_FX.map((id) => [id, id === "random" ? "Random" : id === "simple" ? "Simple" : EFFECT_NAMES[id]]), "redealFx", "How the cards are gathered and dealt again. Random picks a different one each time; Simple is the plain slide. Instant animation skips it."),
       select("lbl-s-faces", "Card faces", [["auto", "High-visibility"], ["classic", "Classic"], ["contrast", "Suit contrast"]], "faces", "High-visibility has large corner indices that stay readable where cards overlap. Suit contrast adds white-on-black clubs and white-on-red diamonds."),
       select("lbl-s-table", "Table pattern", PATTERNS.map((p) => [p.id, p.name]), "table"),
       el("p", { class: "lbl-note" }, "Rules are chosen in New game, never mid-game."),
@@ -217,11 +226,19 @@ export function createUi(root, hooks) {
   }
 
   // ---- new game ---------------------------------------------------------------
-  function openNewGame() {
+  // `first`: the page's opening menu, with no game behind it: nothing to cancel back to.
+  function openNewGame({ first = false, seed = null, rules = null } = {}) {
     const d = dialog("New game", "newgame");
-    let code = state && Number.isInteger(state.rules) ? state.rules : prefs.rules;
+    d.locked = first;
+    let code = rules ?? (state && Number.isInteger(state.rules) ? state.rules : prefs.rules);
     const form = el("div", { class: "lbl-form" });
-    const seedInput = el("input", { type: "text", inputmode: "numeric", id: "lbl-seed", autocomplete: "off", placeholder: "Random", "aria-describedby": "lbl-seed-d" });
+    const seedInput = el("input", { type: "text", inputmode: "numeric", id: "lbl-seed", autocomplete: "off", placeholder: "Random", "aria-describedby": "lbl-seed-d", value: seed ?? false });
+    seedInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        go.click();
+      }
+    });
     const inProgress = () => Boolean(state && state.prompt === "play" && state.moves > 0);
     const confirmBox = el("div", { class: "lbl-confirm", hidden: true, role: "alert" }, el("p", {}, "Leave the game in progress and deal a new one?"));
     function start() {
@@ -236,7 +253,7 @@ export function createUi(root, hooks) {
         go.hidden = true;
         yes.focus();
       } else start();
-    });
+    }, "lbl-primary");
     const yes = button("Yes, deal anew", start, "lbl-danger");
     confirmBox.append(el("div", { class: "lbl-row" }, yes, button("Keep playing", () => d.close(), "lbl-quiet")));
     function draw() {
@@ -256,7 +273,7 @@ export function createUi(root, hooks) {
       );
     }
     draw();
-    d.body.append(form, confirmBox, el("div", { class: "lbl-row" }, go, button("Cancel", () => d.close(), "lbl-quiet")));
+    d.body.append(form, confirmBox, el("div", { class: "lbl-row lbl-actions" }, go, first ? null : button("Cancel", () => d.close(), "lbl-quiet")));
     d.onclose = () => d.node.remove();
     d.open();
   }
@@ -271,6 +288,7 @@ export function createUi(root, hooks) {
   function update(next) {
     prev = state;
     state = next;
+    layer.classList.remove("lbl-idle");
     const home = next.home.reduce((a, b) => a + b, 0);
     sHome.value.textContent = `${home}/52`;
     sRedeals.value.textContent = String(next.redeals_left);
@@ -314,5 +332,5 @@ export function createUi(root, hooks) {
   }
 
   applyHintsSetting();
-  return { update: (s) => update(s), settings: settingsNow, busy };
+  return { update: (s) => update(s), settings: settingsNow, busy, openMenu: (o) => openNewGame(o) };
 }

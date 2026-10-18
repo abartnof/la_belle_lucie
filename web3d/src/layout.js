@@ -31,6 +31,13 @@ export const RISE = 0.05;
 // How high a card in motion or chosen rides (cm); the view keeps it in.
 export const LIFT = 3;
 
+// The strip of a card a player can always read (cm): the Jumbo Index's width plus
+// air. A fan that grows keeps it where there is room, and a hovered or focused
+// fan spreads at it whole.
+export const STRIP = 2.9;
+// How far a spread fan rides above its neighbours (cm).
+export const SPREAD_RISE = 1.2;
+
 const STEP = 0.42; // of a card's width: the strip a corner index needs
 const GAP_X = 0.24; // of a card's width, between two slots (a phone's: less)
 const GAP_X_PORTRAIT = 0.14;
@@ -47,7 +54,9 @@ export const MARGINS = Object.freeze({ top: 0.07, bottom: 0.05, side: 0.02 });
 
 // The poses and slots for a state's fans and the foundations, for a window of
 // this aspect (width / height).
-export function layout(state, aspect, { margins = MARGINS } = {}) {
+// `spread` is the index of a fan to lay out at the full readable strip, raised
+// over the others (the camera and the other fans do not change).
+export function layout(state, aspect, { margins = MARGINS, spread = null } = {}) {
   const fans = state.fans ?? [];
   const cols = columnsFor(aspect);
   const rows = Math.max(1, Math.ceil(fans.length / cols));
@@ -70,9 +79,22 @@ export function layout(state, aspect, { margins = MARGINS } = {}) {
     const col = fan % cols;
     const left = x0 + col * pitchX;
     const n = cards.length;
-    const step = n > 1 ? Math.min(STEP * W, (inner - W) / (n - 1)) : 0;
+    let step = n > 1 ? Math.min(STEP * W, (inner - W) / (n - 1)) : 0;
+    // A long fan takes the empty slots to its right, on its row, for the strip.
+    let free = 0;
+    for (let j = fan + 1; j < fans.length && Math.floor(j / cols) === row && fans[j].length === 0; j++) free++;
+    if (n > 3) step = Math.max(step, Math.min(STRIP, (inner + free * pitchX - W) / (n - 1)));
+    let x = left;
+    let lift = 0;
+    if (spread === fan && n > 3 && step < STRIP - 1e-6) {
+      step = STRIP;
+      lift = SPREAD_RISE;
+      // Keep the whole spread inside the table's width.
+      x = Math.min(left, x0 + contentW - (W + (n - 1) * step));
+      x = Math.max(x, x0);
+    }
     cards.forEach((code, i) => {
-      poses[code] = { x: left + W / 2 + i * step, z: fanZ(row), y: i * RISE, faceUp: true, yaw: 0, fan, home: false, index: i };
+      poses[code] = { x: x + W / 2 + i * step, z: fanZ(row), y: i * RISE + lift, faceUp: true, yaw: 0, fan, home: false, index: i };
     });
     return { fan, x0: left, x1: left + pitchX - gapX / 2, cx: left + W / 2, cz: fanZ(row), step, count: n, width: W, height: H, row, col, inner };
   });

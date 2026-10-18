@@ -8,7 +8,7 @@ Same setup as browser.py (Playwright, system Chromium, file:// page, no network,
 console error). Checks: the tutorial's first pages appear before the first move and can
 be skipped; Settings changes persist across a reload; the New game menu (presets with
 their sources, rules code in state and URL hash, the confirm); the Hint bubble (exactly
-two sentences, gone after a move); Undo and Redeal enable and disable; Help reopens a
+two sentences, gone after a move) and its animated arrow (present, never in the way of a click, gone on dismiss or a move); Undo and Redeal enable and disable; Help reopens a
 page; focus stays in a dialog and Escape closes it; play works under
 prefers-reduced-motion. The software WebGL is slow: the waits are long on purpose.
 Not part of bin/gate.
@@ -33,7 +33,7 @@ def settle(page):
     page.wait_for_function("window.lbl && window.lbl.state() && !window.lbl.table.busy()", timeout=WAIT)
 
 
-def fresh(browser, url, problems, requests, tag, seen=SEEN_ALL, hash_="#seed=7&rules=4", reduced=False, clear=True):
+def fresh(browser, url, problems, requests, tag, seen=SEEN_ALL, hash_="#seed=7&rules=4", reduced=False, clear=True, deal=True):
     ctx = browser.new_context(viewport={"width": 1280, "height": 720}, reduced_motion="reduce" if reduced else "no-preference")
     if clear:
         ctx.add_init_script(f'if (!sessionStorage.getItem("t")) {{ sessionStorage.setItem("t","1"); localStorage.setItem("{KEY}", JSON.stringify({{v: 1, seen: {seen}}})); }}')
@@ -42,7 +42,10 @@ def fresh(browser, url, problems, requests, tag, seen=SEEN_ALL, hash_="#seed=7&r
     page.on("pageerror", lambda e: problems.append(f"{tag}: page error: {e}"))
     page.on("request", lambda r: requests.append(r.url))
     page.goto(url + hash_)
-    settle(page)
+    page.wait_for_selector(OPEN + " #lbl-seed", timeout=WAIT)
+    if deal:
+        page.get_by_role("button", name="Deal", exact=True).click()
+        settle(page)
     return ctx, page
 
 
@@ -81,6 +84,96 @@ def main() -> int:
     with sync_playwright() as p:
         browser = p.chromium.launch(executable_path="/usr/bin/chromium", args=["--no-sandbox", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"])
 
+        # ---- the menu comes first
+        ctx, page = fresh(browser, url, problems, requests, "first", hash_="", deal=False)
+        if page.evaluate("window.lbl.state()") is not None:
+            bad("first: nothing may be dealt before Deal is clicked")
+        if dialog_title(page) != "New game":
+            bad(f"first: the menu should open on load, got {dialog_title(page)!r}")
+        if page.input_value("#lbl-seed") != "" or not page.locator("#lbl-p-classic").is_checked():
+            bad("first: Classic preselected, deal number empty")
+        if page.get_by_role("button", name="Cancel").count():
+            bad("first: there is nothing to cancel back to")
+        if not page.evaluate("document.activeElement?.closest('dialog[open]') !== null"):
+            bad("first: the menu should take focus")
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(300)
+        if not page.locator(OPEN).count():
+            bad("first: Escape must not close the first menu")
+        page.wait_for_timeout(800)
+        if page.evaluate("window.lbl.state()") is not None:
+            bad("first: still nothing dealt after waiting")
+        page.get_by_role("button", name="Deal", exact=True).focus()
+        page.keyboard.press("Enter")
+        settle(page)
+        if page.evaluate("window.lbl.state().rules") != 4 or page.locator(OPEN).count():
+            bad("first: Enter on Deal should deal Classic and close the menu")
+        # Last rules are remembered; the hash prefills seed and rules.
+        page.get_by_role("button", name="New game").first.click()
+        page.wait_for_selector(OPEN)
+        if not page.get_by_role("button", name="Cancel").count():
+            bad("menu from the bar: should be cancellable")
+        page.locator("#lbl-p-fan").check()
+        page.get_by_role("button", name="Deal", exact=True).click()
+        settle(page)
+        page.goto(url)
+        page.wait_for_selector(OPEN + " #lbl-seed", timeout=WAIT)
+        if not page.locator("#lbl-p-fan").is_checked():
+            bad("first: the last game's rules should be preselected")
+        page.goto(url + "#seed=21&rules=37")
+        page.reload()
+        page.wait_for_selector(OPEN + " #lbl-seed", timeout=WAIT)
+        if page.input_value("#lbl-seed") != "21" or not page.locator("#lbl-p-trefoil").is_checked():
+            bad("first: the hash should prefill seed 21 and Trefoil")
+        if page.evaluate("window.lbl.state()") is not None:
+            bad("first: a hash must not auto-deal")
+        ctx.close()
+
+        # ---- tutorial starts at the first deal, not behind the menu
+        ctx, page = fresh(browser, url, problems, requests, "tutfirst", seen="[]", deal=False)
+        if page.locator("dialog[open] .lbl-tutorial, dialog.lbl-tutorial[open]").count():
+            bad("tutfirst: the tutorial must not open behind the menu")
+        page.get_by_role("button", name="Deal", exact=True).click()
+        page.wait_for_function("document.querySelector('dialog[open] h2')?.textContent === 'The table'", timeout=WAIT)
+        ctx.close()
+
+        # ---- end screen: New game opens the menu
+        ctx, page = fresh(browser, url, problems, requests, "endscreen")
+        # A lost game with no redeals (The Fan) is the quick way to an end: play the first legal move until none is left.
+        page.get_by_role("button", name="New game").first.click()
+        page.wait_for_selector(OPEN)
+        page.locator("#lbl-p-fan").check()
+        page.get_by_role("button", name="Deal", exact=True).click()
+        page.wait_for_function("window.lbl.state().rules === 16", timeout=WAIT)
+        page.evaluate("""() => {
+          for (let i = 0; i < 300; i++) {
+            const st = window.lbl.state();
+            if (st.prompt !== "play") break;
+            const m = st.legal.find((x) => x.startsWith("f") && x.includes(">"));
+            if (!m) break;
+            window.lbl.send("move " + m);
+          }
+        }""")
+        settle(page)
+        if state(page)["prompt"] == "play":
+            bad("endscreen: could not reach an end")
+        else:
+            page.wait_for_selector(".lbl-end:not([hidden])", timeout=WAIT)
+            page.locator(".lbl-end").get_by_role("button", name="New game").click()
+            page.wait_for_selector(OPEN + " #lbl-seed")
+            if dialog_title(page) != "New game" or not page.get_by_role("button", name="Cancel").count():
+                bad("endscreen: New game should open a cancellable menu")
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+            if page.locator(OPEN).count():
+                bad("endscreen: Escape should cancel the menu")
+            seed0 = state(page)["seed"]
+            page.locator(".lbl-end").get_by_role("button", name="Same deal again").click()
+            page.wait_for_function("window.lbl.state().prompt === 'play'", timeout=WAIT)
+            if state(page)["seed"] != seed0 or page.locator(OPEN).count():
+                bad("endscreen: Same deal again should redeal at once")
+        ctx.close()
+
         # ---- the tutorial before the first move; skip
         ctx, page = fresh(browser, url, problems, requests, "tutorial", seen="[]")
         page.wait_for_selector(OPEN, timeout=WAIT)
@@ -113,6 +206,8 @@ def main() -> int:
             bad("settings: hints off should hide the Hint button")
         page.get_by_role("button", name="Done").click()
         page.reload()
+        page.wait_for_selector(OPEN + " #lbl-seed", timeout=WAIT)
+        page.get_by_role("button", name="Deal", exact=True).click()
         settle(page)
         if page.get_by_role("button", name="Hint").is_visible():
             bad("settings: hints off should persist across reload")
@@ -190,6 +285,28 @@ def main() -> int:
         settle(page)
         if page.evaluate(cam) != cam0:
             bad("hint: the table must not reframe when a hint shows")
+        arrow = "window.lbl.table.arrow()"
+        hint_state = state(page)["hint"]
+        if not page.evaluate(arrow):
+            bad("hint: an animated arrow should show while a move hint shows")
+        else:
+            # It never blocks clicks: a click where the arrow starts reaches the card under it.
+            spot = page.evaluate("(c) => window.lbl.table.screenOf(c)", hint_state["card"])
+            page.mouse.click(spot["x"], spot["y"])
+            page.wait_for_function("window.lbl.selected() !== null", timeout=WAIT)
+            if page.evaluate("window.lbl.selected().card") != hint_state["card"]:
+                bad("hint: a click through the arrow should select the card beneath it")
+            if not page.evaluate(arrow):
+                bad("hint: choosing a card should keep the hint's arrow")
+            if page.evaluate(cam) != cam0:
+                bad("hint: the arrow must not move the camera")
+        page.locator(".lbl-x").click()
+        if page.evaluate(arrow):
+            bad("hint: dismissing the hint should remove the arrow")
+        page.get_by_role("button", name="Hint").click()
+        page.wait_for_selector(".lbl-hint:not([hidden])", timeout=WAIT)
+        if not page.evaluate(arrow):
+            bad("hint: asking again should bring the arrow back")
         hb = page.locator(".lbl-hint").bounding_box()
         hud = page.locator(".lbl-hud").bounding_box()
         if hb["x"] + hb["width"] > hud["x"] and hb["y"] < hud["y"] + hud["height"]:
@@ -203,6 +320,8 @@ def main() -> int:
             play(page, cmd)
             if page.locator(".lbl-hint").is_visible():
                 bad("hint: the bubble should clear after a move")
+            if page.evaluate(arrow):
+                bad("hint: the arrow should go after a move")
             if undo.is_disabled():
                 bad("buttons: Undo should be enabled after a move")
             undo.click()
@@ -226,6 +345,60 @@ def main() -> int:
                 bad("buttons: Redeal should be lit when no other move is left")
         else:
             bad(f"buttons: following hints never got stuck (prompt {st['prompt']})")
+        # The redeal animation (Random by default): the table is busy while it plays, clicks
+        # and commands are ignored, it ends with the table as show() lays it out, and undoing a
+        # redeal plays no effect. The clock is stepped by hand; the software WebGL is too slow
+        # to time it.
+        clock = "window.lbl.table.redealClock"
+        page.evaluate(f"{clock}.manual(true)")
+        st0 = state(page)
+        page.evaluate("window.lbl.send('redeal')")
+        if not page.evaluate(f"{clock}.active()") or not page.evaluate("window.lbl.table.busy()"):
+            bad("redeal: the default animation should be playing and the table busy")
+        if not undo.is_disabled() or not redeal.is_disabled() or not page.get_by_role("button", name="Hint").is_disabled():
+            bad("redeal: Undo, Hint and Redeal should be disabled while it plays")
+        spot = page.evaluate("(c) => window.lbl.table.screenOf(c)", state(page)["fans"][0][-1])
+        page.mouse.click(spot["x"], spot["y"])
+        page.evaluate("window.lbl.send('hint')")
+        if page.evaluate("window.lbl.selected()") is not None or state(page)["hint"] is not None:
+            bad("redeal: clicks and hints should be ignored while it plays")
+        steps = 0
+        while page.evaluate(f"{clock}.step(0.05)") and steps < 400:
+            steps += 1
+        if not 5 < steps < 120:  # under 3 s of effect (60 steps) with room for the camera
+            bad(f"redeal: the effect should end in under 3 s, took {steps * 0.05:.2f} s")
+        page.evaluate(f"{clock}.manual(false)")
+        settle(page)
+        st1 = state(page)
+        if st1["redeals_left"] != st0["redeals_left"] - 1 or undo.is_disabled():
+            bad("redeal: after the effect Undo should be enabled and a redeal used")
+        for fan, cards in enumerate(st1["fans"]):
+            for code in cards[-1:]:
+                at = page.evaluate("(c) => window.lbl.table.screenOf(c)", code)
+                if not at or at["x"] < 0 or at["x"] > 1280 or at["y"] < 0 or at["y"] > 720:
+                    bad(f"redeal: {code} is not on screen after the effect")
+        undo.click()
+        page.wait_for_function("(n) => window.lbl.state().redeals_left === n", arg=st0["redeals_left"], timeout=WAIT)
+        if page.evaluate(f"{clock}.active()"):
+            bad("redeal: undoing a redeal should play no effect")
+        settle(page)
+        # "Simple" is the plain slide, with no effect, and the setting persists.
+        page.get_by_role("button", name="Settings").click()
+        page.wait_for_selector(OPEN)
+        options = page.eval_on_selector_all("#lbl-s-redeal option", "(o) => o.map((x) => x.textContent)")
+        if options[:2] != ["Random", "Tornado"] or options[-1] != "Simple" or len(options) != 9:
+            bad(f"redeal: the Settings list should be Random, the seven effects, Simple: {options!r}")
+        if page.input_value("#lbl-s-redeal") != "random":
+            bad("redeal: the animation should default to Random")
+        page.locator("#lbl-s-redeal").select_option("simple")
+        page.keyboard.press("Escape")
+        saved = page.evaluate(f'JSON.parse(localStorage.getItem("{KEY}")).redealFx')
+        if saved != "simple":
+            bad(f"redeal: the animation setting should be saved, got {saved!r}")
+        page.evaluate("window.lbl.send('redeal')")
+        if page.evaluate(f"{clock}.active()"):
+            bad("redeal: Simple should play no effect")
+        settle(page)
         # Redeal until none is left: the button goes disabled with 0 redeals.
         for _ in range(3):
             st = state(page)

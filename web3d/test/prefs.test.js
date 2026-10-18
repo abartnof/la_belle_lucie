@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadPrefs, savePrefs, DEFAULTS, encodeRules, decodeRules, PRESETS, presetOf, stepRedeals, parseSeed, TABLES } from "../src/prefs.js";
+import { loadPrefs, savePrefs, DEFAULTS, encodeRules, decodeRules, PRESETS, presetOf, stepRedeals, parseSeed, TABLES, REDEAL_FX } from "../src/prefs.js";
 
 const memory = () => {
   const m = new Map();
@@ -83,4 +83,19 @@ test("deal numbers: whole numbers in range, else random", () => {
   assert.equal(parseSeed("99999999999"), null);
   assert.equal(parseSeed("4294967296"), null);
   assert.equal(parseSeed("0"), 0);
+});
+
+test("the redeal animation is kept, and an unknown one falls back to random", () => {
+  const store = memory();
+  assert.equal(loadPrefs(store).settings.redealFx, "random");
+  const p = loadPrefs(store);
+  for (const fx of REDEAL_FX) {
+    p.settings = { ...p.settings, redealFx: fx };
+    savePrefs(store, p);
+    assert.equal(loadPrefs(store).settings.redealFx, fx);
+  }
+  assert.deepEqual(REDEAL_FX.slice(0, 2), ["random", "tornado"]);
+  assert.equal(REDEAL_FX.at(-1), "simple");
+  store.setItem("la-belle-lucie.prefs", JSON.stringify({ redealFx: "confetti" }));
+  assert.equal(loadPrefs(store).settings.redealFx, "random");
 });

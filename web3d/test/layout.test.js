@@ -110,3 +110,74 @@ test("cards are named for the page's spoken fallback", () => {
   assert.equal(cardName("TH"), "ten of hearts");
   assert.equal(cardName("AS"), "ace of spades");
 });
+
+// ---- long fans readable ----------------------------------------------------
+import { STRIP } from "../src/layout.js";
+
+const RK = "A23456789TJQK";
+const longState = (fan = 7, n = 13, empties = []) => {
+  const fans = Array.from({ length: 18 }, () => []);
+  fans[fan] = [...RK].slice(0, n).map((r) => r + "S");
+  const others = PACK.filter((c) => !fans[fan].includes(c));
+  let k = 0;
+  for (let i = 0; i < fans.length && k < others.length; i++) {
+    if (i === fan || empties.includes(i)) continue;
+    fans[i] = others.slice(k, k + 3);
+    k += 3;
+  }
+  return { fans, home: [0, 0, 0, 0], prompt: "play" };
+};
+
+test("a long fan with empty slots to its right keeps the readable strip at rest", () => {
+  const st = longState(7, 9, [8, 9, 10]);
+  const lay = layout(st, 16 / 9);
+  const xs = st.fans[7].map((c) => lay.poses[c].x);
+  const step = xs[1] - xs[0];
+  assert.ok(step >= STRIP - 1e-6, `step ${step}`);
+  // it stays on its own row and inside the table
+  const right = Math.max(...xs) + CARD.width / 2;
+  assert.ok(right <= lay.slots[10].x0 + lay.slots[10].inner + 1e-6);
+});
+
+test("with no room to the right a long fan compresses as before and never leaves its slot", () => {
+  const st = longState(7, 9, []);
+  const lay = layout(st, 16 / 9);
+  const xs = st.fans[7].map((c) => lay.poses[c].x);
+  assert.ok(xs[1] - xs[0] < STRIP);
+  assert.ok(Math.max(...xs) + CARD.width / 2 <= lay.slots[7].x0 + lay.slots[7].inner + 1e-6);
+});
+
+for (const [name, aspect] of Object.entries(ASPECTS)) {
+  for (const fan of [0, 5, 7, 17]) {
+    test(`a spread fan of 13 shows every strip, raised, inside the view at ${name}, fan ${fan}`, () => {
+      const st = longState(fan, 13, []);
+      const rest = layout(st, aspect);
+      const lay = layout(st, aspect, { spread: fan });
+      const cards = st.fans[fan];
+      for (let i = 1; i < cards.length; i++) {
+        const gap = lay.poses[cards[i]].x - lay.poses[cards[i - 1]].x;
+        assert.ok(gap >= STRIP - 1e-6, `strip ${i}: ${gap}`);
+      }
+      const camera = lay.camera;
+      for (const c of cards) {
+        const p = lay.poses[c];
+        for (const dx of [-CARD.width / 2, CARD.width / 2]) {
+          const [sx] = project(camera, aspect, [p.x + dx, p.y, p.z]);
+          assert.ok(Math.abs(sx) <= 1 + 1e-6, `${c} off screen at ${sx}`);
+        }
+        // above every card of every other fan
+        for (const [o, q] of Object.entries(lay.poses)) if (!cards.includes(o)) assert.ok(p.y > q.y, `${c} not above ${o}`);
+      }
+      // the camera and the other fans do not move
+      assert.deepEqual(lay.camera, rest.camera);
+      for (const [o, q] of Object.entries(rest.poses)) if (!cards.includes(o)) assert.deepEqual(lay.poses[o], q);
+    });
+  }
+}
+
+test("spreading a short fan, or none, changes nothing", () => {
+  const st = dealt(3);
+  const a = layout(st, 16 / 9);
+  assert.deepEqual(layout(st, 16 / 9, { spread: 4 }).poses, a.poses);
+  assert.deepEqual(layout(st, 16 / 9, { spread: null }).poses, a.poses);
+});

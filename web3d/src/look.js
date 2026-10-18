@@ -1,13 +1,19 @@
 // How the table looks, as pure decisions (the tests run it in Node).
 
+// The one colour that says "look here, act here": the system blue, gentle and
+// readable on the table, on white and on black (style.css --lbl-focus-blue is
+// the same). Everything else is grey, and red belongs to the red suits.
+export const FOCUS_BLUE = "#0a6cf0";
+
 // Automatic is the high-visibility (Jumbo Index) faces on every device; the
 // classic art stays a choice in Settings.
 export const faceKind = (choice) => (choice === "classic" || choice === "contrast" ? choice : "jumbo");
 
 // The brightness a card's face is drawn at (1 = as printed). A card under
-// another is dimmed so the top cards stand clear; a top card with nowhere to
-// go is dimmed a little. The strip of a buried card keeps its index legible.
-export const DIM = Object.freeze({ buried: 0.66, stuck: 0.86 });
+// another is dimmed so the top cards stand clear; every top card is at full
+// brightness, playable or not, so the one cue is uniform. The strip of a buried
+// card keeps its index legible.
+export const DIM = Object.freeze({ buried: 0.66 });
 
 // -> Map code -> level, for every card in a fan.
 export function dimLevels(state) {
@@ -17,9 +23,7 @@ export function dimLevels(state) {
     cards.forEach((code, i) => {
       const top = i === cards.length - 1;
       let level = 1;
-      if (top) {
-        if (state.prompt === "play" && !legal.some((m) => m.startsWith(`f${fan}>`))) level = DIM.stuck;
-      } else if (!(state.draw === "ready" && legal.some((m) => m.startsWith(`draw f${fan}:${i}>`)))) {
+      if (!top && !(state.draw === "ready" && legal.some((m) => m.startsWith(`draw f${fan}:${i}>`)))) {
         level = DIM.buried;
       }
       levels.set(code, level);

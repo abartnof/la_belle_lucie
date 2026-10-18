@@ -5,15 +5,15 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 
 :root {
   /* Greyscale chrome; colour only where it means something: red is an error
-     or a loss, blue is a hint (the table's ink), amber a choice. */
+     or a loss; one gentle blue is "look here, act here" (a hint, a choice, focus, the lit button). */
   --lbl-bg: #f7f7f7; --lbl-fg: #1a1a1a; --lbl-mute: #4d4d4d; --lbl-line: #8a8a8a;
-  --lbl-accent: #2b2b2b; --lbl-on: #ffffff; --lbl-danger: #b3191f; --lbl-focus: #1a1a1a; --lbl-hint: #0a4fd8;
+  --lbl-accent: #2b2b2b; --lbl-on: #ffffff; --lbl-danger: #b3191f; --lbl-focus-blue: #0a6cf0; --lbl-focus: var(--lbl-focus-blue); --lbl-hint: var(--lbl-focus-blue);
   --lbl-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --lbl-bg: #1f1f1f; --lbl-fg: #f0f0f0; --lbl-mute: #c2c2c2; --lbl-line: #767676;
-    --lbl-accent: #e6e6e6; --lbl-on: #141414; --lbl-danger: #ff9b95; --lbl-focus: #f0f0f0; --lbl-hint: #7fa8ff;
+    --lbl-accent: #e6e6e6; --lbl-on: #141414; --lbl-danger: #ff9b95; --lbl-focus-blue: #4d9bff;
   }
 }
 
@@ -49,13 +49,11 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .lbl-btn.lbl-small { min-height: 36px; padding: 0 10px; }
 .lbl-btn.lbl-wide { width: 100%; text-align: left; }
 .lbl-btn:disabled { opacity: 0.55; cursor: default; }
-/* The Redeal button, when it is the only move left: amber, ringed, pulsing. Amber is
-   the table's "chosen" ink, so colour keeps its one meaning: this is what you act on. */
+/* The Redeal button, when it is the only move left: the focus blue, ringed. It stays
+   put (no pulse): the blue already says this is what you act on. */
 .lbl-btn.lbl-ready:not(:disabled) {
-  background: #f2a20c; color: #1a1a1a; border-color: #1a1a1a; box-shadow: 0 0 0 3px #f2a20c;
-  animation: lbl-ready 1.6s ease-in-out infinite;
+  background: #0a6cf0; color: #ffffff; border-color: #0a6cf0; box-shadow: 0 0 0 3px rgba(10, 108, 240, 0.35);
 }
-@keyframes lbl-ready { 50% { box-shadow: 0 0 0 7px rgba(242, 162, 12, 0.35); } }
 .lbl-btn:not(:disabled):hover { filter: brightness(1.08); }
 .lbl-ui :focus-visible, .lbl-dialog :focus-visible { outline: 3px solid var(--lbl-focus); outline-offset: 2px; }
 .lbl-link { font: inherit; background: none; border: 0; padding: 0; color: var(--lbl-accent); text-decoration: underline; cursor: pointer; }
@@ -108,7 +106,6 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   .lbl-dialog { padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .lbl-btn.lbl-ready:not(:disabled) { animation: none; }
   .lbl-ui *, .lbl-dialog, .lbl-dialog * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 @media (max-width: 899px) {
@@ -117,3 +114,10 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 @media (max-width: 480px) {
   .lbl-hint { top: 96px; }
 }
+
+.lbl-idle .lbl-hud, .lbl-idle .lbl-bar, .lbl-idle .lbl-hint, .lbl-idle .lbl-end { display: none; }
+/* The one deal button of a menu or end screen: the focus blue. */
+.lbl-btn.lbl-primary { background: var(--lbl-focus-blue); border-color: var(--lbl-focus-blue); color: #ffffff; }
+@media (prefers-color-scheme: dark) { .lbl-btn.lbl-primary { color: #0b0b0b; } }
+/* The menu's Deal and Cancel stay in view however long the options run. */
+.lbl-dialog .lbl-actions { position: sticky; bottom: -16px; margin: 0 -18px -16px; padding: 10px 18px; background: var(--lbl-bg); border-top: 1px solid var(--lbl-line); }

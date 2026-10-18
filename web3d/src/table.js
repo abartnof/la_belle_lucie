@@ -6,9 +6,11 @@
 //
 //   show(state, { instant })       tween every card to where the state puts it
 //   highlight({ select, targets, hint })
-//        select   a card code, drawn in the chosen (amber) ink
+//        select   a card code, drawn in the chosen (blue) ink
 //        targets  [{ fan } | { home: true, suit }]: where the chosen card may go
-//        hint     { cards: [code], targets: [...] } in the hint (cyan) ink
+//        hint     { cards: [code], targets: [...], move?, card?, onto? } in the hint
+//                 (blue) ink; with the engine's hint (move, card, onto) it also
+//                 draws the animated arrow from the card to where it goes
 //   setSettings(s)                 table pattern, faces, speed
 //   onClick(cb)                    cb({ fan, home, card, suit?, action })
 //                                  action: "click" | "dblclick" | "home" | "clear"
@@ -18,36 +20,40 @@
 // Hooks: `hooks.margins()` may give the margins; `hooks.focus(fan)` is told as the
 // keyboard moves between fans.
 
-import { CanvasTexture, Mesh, MeshBasicMaterial, PlaneGeometry, Plane, Raycaster, SRGBColorSpace, Vector2, Vector3 } from "three";
+import { BufferAttribute, BufferGeometry, CanvasTexture, DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry, Plane, Raycaster, SRGBColorSpace, Vector2, Vector3, Quaternion, PointLight, RingGeometry } from "three";
+import { EFFECTS, createRedeal } from "./redeal-fx.js";
 import { createDeck, INKS } from "../../kit/js/deck.js";
 import { M3 } from "../../kit/js/easing.js";
 import { jumboTextures, largeTextHere } from "../../kit/js/faces.js";
 import { lying, slide } from "../../kit/js/kinematics.js";
 import { createScene } from "../../kit/js/scene.js";
 import { CARD as UNITS_CARD } from "../../kit/js/units.js";
+import { CYCLE_MS, arrowEnds, arrowShape, phase } from "./arrow.js";
 import { backTexture, classicTextures } from "./classic.js";
 import { CARD, LIFT, MARGINS, SUITS, cardName, hitSlot, layout } from "./layout.js";
-import { CONTRAST_BG, dimLevels, faceKind as faceKindFor, invertPixels } from "./look.js";
+import { CONTRAST_BG, FOCUS_BLUE, dimLevels, faceKind as faceKindFor, invertPixels } from "./look.js";
 
 const CODES = [...SUITS].flatMap((s) => [..."A23456789TJQK"].map((r) => r + s));
 const RANKS = "A23456789TJQK";
 const MOVE_MS = 420;
 const CAMERA_MS = 380;
+const SPREAD_MS = 170;
 const DOUBLE_MS = 380;
-// Colour is semantic and the rest is grey: a hint is a bold blue, the chosen
-// card amber, a place it may go a thinner amber, a hover or focus the ink.
+// Colour is semantic and the rest is grey: one gentle blue says "look here, act
+// here" (a hint, the chosen card, a place it may go, the keyboard's place), told
+// apart by weight, thickest for a hint; a hover is the grey ink.
 // The kit is vendored, so its ink language is overridden here, before any deck.
-const BLUE = "#0a4fd8";
-const AMBER = "#e8900c";
+const BLUE = FOCUS_BLUE;
 const GREY_INK = "#1a1a1a";
 Object.assign(INKS, {
   plain: { color: GREY_INK },
   hover: { color: GREY_INK, heavier: 1.5 },
+  focus: { color: BLUE, heavier: 2.2 },
   hint: { color: BLUE, heavier: 3.4 },
-  chosen: { color: AMBER, heavier: 2.2 },
-  target: { color: "#c47400", heavier: 1.5 },
+  chosen: { color: BLUE, heavier: 2.6 },
+  target: { color: BLUE, heavier: 1.4 },
 });
-const SLOT_COLOUR = { plain: "#8c8c8c", chosen: AMBER, target: "#c47400", hint: BLUE, focus: GREY_INK };
+const SLOT_COLOUR = { plain: "#8c8c8c", chosen: BLUE, target: BLUE, hint: BLUE, focus: BLUE };
 
 const reducedMotion = () => {
   try {
@@ -95,7 +101,7 @@ function slotTexture(suit) {
 }
 
 export function createTable(canvas, hooks = {}) {
-  let settings = { table: "plain", faces: "auto", speed: "normal" };
+  let settings = { table: "plain", faces: "auto", speed: "normal", redealFx: "random" };
   const touch = largeTextHere();
   const stage = createScene(canvas, { table: settings.table, shadowMap: 512, touch });
   const { scene, camera, renderer } = stage;
@@ -181,6 +187,61 @@ export function createTable(canvas, hooks = {}) {
   const fanTexture = slotTexture(null);
   const slotMesh = (i) => (slotMeshes[i] ??= makePlace(fanTexture));
 
+  // ---- the hint arrow ------------------------------------------------------
+  // Two flat meshes (a white halo under the blue arrow) above the cards, drawn
+  // on top of everything, never hit by a click (the picker only tests cards).
+  const ARROW_Y = LIFT + 1;
+  const ARROW_TRIS = 40;
+  function arrowMesh(color, order, y) {
+    const geometry = new BufferGeometry();
+    geometry.setAttribute("position", new BufferAttribute(new Float32Array(ARROW_TRIS * 9), 3));
+    geometry.setDrawRange(0, 0);
+    const material = new MeshBasicMaterial({ color, transparent: true, depthTest: false, depthWrite: false, fog: false, side: DoubleSide });
+    const mesh = new Mesh(geometry, material);
+    mesh.renderOrder = order;
+    mesh.frustumCulled = false;
+    mesh.visible = false;
+    mesh.raycast = () => {};
+    mesh.userData.y = y;
+    scene.add(mesh);
+    return mesh;
+  }
+  const arrowHalo = arrowMesh("#ffffff", 20, ARROW_Y);
+  const arrowFill = arrowMesh(BLUE, 21, ARROW_Y + 0.02);
+  let arrow = null; // { ends, start } while a hint with a move shows
+
+  function fillArrow(mesh, shape) {
+    const a = mesh.geometry.attributes.position;
+    const n = Math.min(shape.triangles.length, ARROW_TRIS * 3);
+    for (let i = 0; i < n; i++) a.setXYZ(i, shape.triangles[i][0], mesh.userData.y, shape.triangles[i][1]);
+    a.needsUpdate = true;
+    mesh.geometry.setDrawRange(0, n);
+  }
+  function drawArrow(now) {
+    if (!arrow) return false;
+    const still = speedInstant();
+    const { t, alpha } = still ? { t: 1, alpha: 1 } : phase(now - arrow.start);
+    const opts = still ? { tail: 1 } : {};
+    fillArrow(arrowHalo, arrowShape(arrow.ends, t, { ...opts, inflate: 0.55 }));
+    fillArrow(arrowFill, arrowShape(arrow.ends, t, opts));
+    arrowHalo.material.opacity = arrowFill.material.opacity = alpha;
+    arrowHalo.visible = arrowFill.visible = alpha > 0;
+    dirty = true;
+    return !still;
+  }
+  function setArrow(hint) {
+    const ends = hint?.move && lay ? arrowEnds(lay, hint) : null;
+    if (!ends) {
+      arrow = null;
+      arrowHalo.visible = arrowFill.visible = false;
+      dirty = true;
+      return;
+    }
+    const same = arrow && arrow.key === hint.move + hint.card;
+    arrow = { ends, start: same ? arrow.start : performance.now(), key: hint.move + hint.card };
+    drawArrow(performance.now());
+  }
+
   // ---- state ---------------------------------------------------------------
   let state = null;
   let lay = null;
@@ -189,6 +250,8 @@ export function createTable(canvas, hooks = {}) {
   let camAnim = null;
   let marks = { select: null, targets: [], hint: null };
   let hover = null;
+  let hoverFan = null; // the fan under the pointer (or last tapped), spread to read
+  let spreadNow = null; // the fan laid out spread
   let kb = null; // the fan the keyboard is on (a number), or "home"
   let dirty = true;
   let looping = false;
@@ -222,7 +285,7 @@ export function createTable(canvas, hooks = {}) {
 
   function relayout({ instant = false } = {}) {
     if (!state) return;
-    lay = layout(state, aspect(), { margins: wantMargins() });
+    lay = layout(state, aspect(), { margins: wantMargins(), spread: spreadNow });
     const to = lay.camera;
     const same = cam && [...to.eye, ...to.at, to.fov].every((v, i) => Math.abs(v - [...cam.eye, ...cam.at, cam.fov][i]) < 0.01);
     if (same && !camAnim) {
@@ -234,6 +297,7 @@ export function createTable(canvas, hooks = {}) {
       camAnim = { from: cam, to, start: performance.now() };
     }
     placeSlots();
+    if (arrow) setArrow(marks.hint);
   }
 
   function placeSlots() {
@@ -253,11 +317,123 @@ export function createTable(canvas, hooks = {}) {
     });
   }
 
-  function show(next, { instant = false } = {}) {
+  const wantSpread = () => hoverFan ?? (typeof kb === "number" ? kb : null);
+
+  // ---- the redeal animation (redeal-fx.js) ----------------------------------------
+  // The cards in the engine's new order fly on the physics of one effect and end
+  // on exactly the poses show() would have given them. A light and a ring
+  // (neutral white) belong to two of the effects.
+  let fx = null; // { sim, codes, targets, last }
+  let fxManual = false; // tests step the clock themselves
+  let fxLight = null;
+  let fxRing = null;
+  const fxPos = new Vector3();
+  const fxQuat = new Quaternion();
+
+  function fxProps() {
+    if (!fxLight) {
+      fxLight = new PointLight("#ffffff", 0, 0, 2);
+      fxRing = new Mesh(new RingGeometry(0.96, 1, 96), new MeshBasicMaterial({ color: "#e6e6e6", transparent: true, opacity: 0, side: DoubleSide, depthWrite: false }));
+      fxRing.rotation.x = -Math.PI / 2;
+      fxRing.position.y = 0.05;
+      fxRing.visible = false;
+      fxRing.raycast = () => {};
+      scene.add(fxLight, fxRing);
+    }
+  }
+  function chooseEffect() {
+    const want = settings.redealFx;
+    if (want === "simple" || !state?.fans) return null;
+    return EFFECTS.includes(want) ? want : EFFECTS[Math.floor(Math.random() * EFFECTS.length)];
+  }
+  function startFx(name) {
+    const codes = state.fans.flat();
+    if (!codes.length || codes.some((c) => !lay.poses[c] || !entries.get(c).placed)) return false;
+    const targets = codes.map((c) => poseOf(lay.poses[c]));
+    const from = codes.map((c) => {
+      const e = entries.get(c);
+      e.anim = null;
+      return { x: e.mesh.position.x, y: e.mesh.position.y, z: e.mesh.position.z, yaw: 0 };
+    });
+    const slots = targets.map((t, j) => ({ x: t.position.x, y: t.position.y, z: t.position.z, yaw: lay.poses[codes[j]].yaw, fan: lay.poses[codes[j]].fan }));
+    fxProps();
+    fx = { sim: createRedeal(name, { from, slots, rng: Math.random }), codes, targets, last: null };
+    const moving = new Set(codes);
+    for (const [code, e] of entries) if (!moving.has(code)) e.mesh.visible = !!lay.poses[code];
+    hooks.busy?.(true);
+    return true;
+  }
+  function writeFx() {
+    fx.codes.forEach((c, j) => {
+      fx.sim.write(j, fxPos, fxQuat);
+      const m = entries.get(c).mesh;
+      m.position.copy(fxPos);
+      m.quaternion.copy(fxQuat);
+    });
+    const { light, ring } = fx.sim;
+    fxLight.position.set(light.x, light.y, light.z);
+    fxLight.intensity = 6000 * light.intensity;
+    fxRing.visible = ring.on;
+    fxRing.position.x = ring.x;
+    fxRing.position.z = ring.z;
+    fxRing.scale.setScalar(Math.max(ring.radius, 0.01));
+    fxRing.material.opacity = ring.opacity;
+    dirty = true;
+  }
+  // Advance the effect by dt seconds; false once it is over.
+  function stepFx(dt) {
+    if (!fx) return false;
+    fx.sim.step(dt);
+    if (fx.sim.done() || !fx.sim.valid()) {
+      endFx();
+      return false;
+    }
+    writeFx();
+    return true;
+  }
+  // Snap every card to the pose the layout gives it, and say if the physics was off.
+  function endFx() {
+    if (!fx) return;
+    const f = fx;
+    fx = null;
+    const err = f.sim.finish();
+    if (err > 1e-3 || !Number.isFinite(err)) console.error(`redeal animation ended ${err} cm from its slots`);
+    f.codes.forEach((c) => put(entries.get(c).mesh, poseOf(lay.poses[c])));
+    fxLight.intensity = 0;
+    fxRing.visible = false;
+    dirty = true;
+    hooks.busy?.(false);
+    decorate();
+    respread();
+    kickoff();
+  }
+
+  function show(next, { instant = false, redeal = false } = {}) {
+    endFx();
     const first = !state;
     state = next;
     const quick = instant || first || speedInstant();
+    const effect = redeal && !quick ? chooseEffect() : null;
+    spreadNow = effect ? null : wantSpread();
     relayout({ instant: quick });
+    if (!(effect && startFx(effect))) movePoses(quick, false);
+    decorate();
+    kickoff();
+  }
+
+  // The hovered, tapped or keyboard-focused fan spreads to be read: a short tween.
+  function respread() {
+    const want = state ? wantSpread() : null;
+    if (!state || fx || want === spreadNow) return;
+    spreadNow = want;
+    lay = layout(state, aspect(), { margins: wantMargins(), spread: spreadNow });
+    movePoses(speedInstant(), true);
+    if (arrow) setArrow(marks.hint);
+    kickoff();
+  }
+
+  // Take every card to where the layout puts it (at once, or tweened).
+  function movePoses(quick, gentle) {
     const now = performance.now();
     // Many cards moving at once is a redeal: stagger them in reading order.
     const moving = CODES.filter((c) => {
@@ -267,7 +443,7 @@ export function createTable(canvas, hooks = {}) {
       const to = poseOf(p);
       return e.mesh.position.distanceToSquared(to.position) > 1e-4;
     });
-    const staggered = moving.length > 4;
+    const staggered = !gentle && moving.length > 4;
     const order = Object.keys(lay.poses).sort((a, b) => lay.poses[a].z - lay.poses[b].z || lay.poses[a].x - lay.poses[b].x);
     const rank = new Map(order.map((c, i) => [c, i]));
     for (const code of CODES) {
@@ -285,10 +461,10 @@ export function createTable(canvas, hooks = {}) {
       if (e.mesh.position.distanceToSquared(to.position) < 1e-4 && !e.anim) continue;
       const from = { position: e.mesh.position.clone(), quaternion: e.mesh.quaternion.clone() };
       const delay = staggered ? Math.min(700, (rank.get(code) ?? 0) * 14) : 0;
-      e.anim = { start: now + delay, dur: MOVE_MS + (staggered ? 120 : 0), fn: slide(from, to, { ease: M3.standard, lift: staggered ? LIFT * 0.6 : LIFT }), to, from };
+      const lift = gentle ? 0 : staggered ? LIFT * 0.6 : LIFT;
+      e.anim = { start: now + delay, dur: gentle ? SPREAD_MS : MOVE_MS + (staggered ? 120 : 0), fn: slide(from, to, { ease: M3.standard, lift }), to, from };
     }
-    decorate();
-    kickoff();
+    dirty = true;
   }
 
   // ---- ink ----------------------------------------------------------------
@@ -311,13 +487,13 @@ export function createTable(canvas, hooks = {}) {
     const set = (code, line) => code && lines.set(code, line);
     const kbCard = kb === "home" ? null : kb !== null ? topOfFan(kb) : null;
     set(hover, "hover");
-    set(kbCard, "hover");
+    set(kbCard, "focus");
     for (const t of marks.targets) set(targetCard(t), "target");
     for (const t of marks.hint?.targets ?? []) set(targetCard(t), "hint");
     for (const c of marks.hint?.cards ?? []) set(c, "hint");
     set(marks.select, "chosen");
-    // A card under another (or with nowhere to go) is dimmed so the top cards
-    // stand clear; any card inked for attention is shown as printed.
+    // A card under another is dimmed so the top cards stand clear (every top
+    // card is bright); any card inked for attention is shown as printed.
     const dims = dimLevels(state);
     for (const [code, e] of entries) {
       const line = lines.get(code) ?? "plain";
@@ -341,6 +517,7 @@ export function createTable(canvas, hooks = {}) {
   function highlight(next = {}) {
     marks = { select: next.select ?? null, targets: next.targets ?? [], hint: next.hint ?? null };
     decorate();
+    setArrow(marks.hint);
     kickoff();
   }
 
@@ -370,6 +547,12 @@ export function createTable(canvas, hooks = {}) {
       applyCamera({ eye: mix(camAnim.from.eye, camAnim.to.eye), at: mix(camAnim.from.at, camAnim.to.at), fov: camAnim.from.fov + (camAnim.to.fov - camAnim.from.fov) * u });
       if (t >= 1) camAnim = null;
       else busy = true;
+    }
+    if (drawArrow(now)) busy = true;
+    if (fx) {
+      const dt = fx.last === null ? 0 : Math.min((now - fx.last) / 1000, 0.05);
+      fx.last = now;
+      if (fxManual || stepFx(dt)) busy = true;
     }
     if (dirty) {
       dirty = false;
@@ -436,12 +619,17 @@ export function createTable(canvas, hooks = {}) {
     if (moved > 10) return;
     const hit = pick(e.clientX, e.clientY);
     const now = performance.now();
+    if (e.pointerType && e.pointerType !== "mouse") {
+      hoverFan = hit && !hit.home ? hit.fan : null;
+      respread();
+    }
     if (!hit) {
       lastClick = null;
       emit({ fan: null, home: false, card: null, action: "clear" });
       return;
     }
     kb = null;
+    respread();
     const twice = lastClick && hit.card && lastClick.card === hit.card && now - lastClick.time < DOUBLE_MS;
     lastClick = { card: hit.card, time: now };
     emit({ ...hit, action: twice ? "dblclick" : "click" });
@@ -456,8 +644,13 @@ export function createTable(canvas, hooks = {}) {
       decorate();
       kickoff();
     }
+    if (hit && !hit.home && hit.fan !== null) hoverFan = hit.fan;
+    else hoverFan = null;
+    respread();
   });
   canvas.addEventListener("pointerleave", () => {
+    hoverFan = null;
+    respread();
     if (hover) {
       hover = null;
       decorate();
@@ -481,6 +674,7 @@ export function createTable(canvas, hooks = {}) {
   }
   function focusAt(next) {
     kb = next;
+    respread();
     hooks.focus?.(next);
     announce(next === "home" ? describeHome() : describeFan(next));
     decorate();
@@ -559,8 +753,22 @@ export function createTable(canvas, hooks = {}) {
       const s = lay.slots[what.fan];
       return s && screenOfPoint(s.cx, 0, s.cz);
     },
+    // The hint arrow on show, for tests: its ends and whether it is drawn.
+    arrow: () => (arrow ? { ...arrow.ends, visible: arrowFill.visible, cycle: CYCLE_MS } : null),
     // Whether anything is still moving, and the frames drawn.
-    busy: () => [...entries.values()].some((e) => e.anim) || !!camAnim,
+    busy: () => [...entries.values()].some((e) => e.anim) || !!camAnim || !!fx,
+    // For tests: take the redeal animation's clock (true), then step it by seconds
+    // and draw; false gives the clock back.
+    redealClock: {
+      manual: (on) => (fxManual = !!on),
+      step(seconds) {
+        const live = stepFx(seconds);
+        stage.render();
+        dirty = false;
+        return live;
+      },
+      active: () => !!fx,
+    },
     stage,
     layout: () => lay,
     cardSize: UNITS_CARD,

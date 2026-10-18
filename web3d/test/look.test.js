@@ -26,10 +26,13 @@ test("a card under another is dimmed; a top card that can move is not", () => {
   assert.equal(d.get("5C"), DIM.buried);
 });
 
-test("a top card with no move is dimmed, but less than a buried one", () => {
-  const d = dimLevels(state());
-  assert.equal(d.get("KD"), DIM.stuck);
-  assert.ok(DIM.stuck > DIM.buried && DIM.stuck < 1);
+test("every top card is full brightness, whether or not it can move", () => {
+  const s = state();
+  const d = dimLevels(s);
+  assert.equal(d.get("KD"), 1); // a top card with no move
+  for (const cards of s.fans) if (cards.length) assert.equal(d.get(cards[cards.length - 1]), 1);
+  const alone = dimLevels({ prompt: "play", legal: [], fans: [["QS"]] });
+  assert.equal(alone.get("QS"), 1); // a singleton, nothing under it
 });
 
 test("a buried card with a legal draw is playable, so not dimmed", () => {
@@ -63,4 +66,11 @@ test("inverting maps paper to the card colour and ink to white", () => {
   assert.deepEqual([...px.slice(0, 3)], [21, 23, 28]);
   assert.deepEqual([...px.slice(4, 7)], [255, 255, 255]);
   assert.ok(px[8] > 240, "red ink becomes white");
+});
+
+import { FOCUS_BLUE } from "../src/look.js";
+test("there is one focus blue", () => {
+  assert.match(FOCUS_BLUE, /^#[0-9a-f]{6}$/);
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(FOCUS_BLUE.slice(i, i + 2), 16));
+  assert.ok(b > 200 && r < 40 && g > 80 && g < 140);
 });
