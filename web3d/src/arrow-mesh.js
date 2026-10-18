@@ -1,8 +1,13 @@
 // The hint arrow as a solid: a flat prism built from arrow.js's outline, toon
 // shaded like the cards, with the kit's ink line round it, and casting a shadow.
 // The outline changes every frame, so the buffers are filled in place.
+//
+// Its shadow is not the key light's: that falls to the back right, so on screen
+// the shadow of a thing in the air sits above and behind it. The shadow here is
+// the arrow's outline laid flat on the surface straight beneath it, as if the
+// light were overhead, so it reads as being below the arrow.
 
-import { BufferAttribute, BufferGeometry, Mesh, MeshToonMaterial, ShapeUtils, Vector2 } from "three";
+import { BufferAttribute, BufferGeometry, DoubleSide, Mesh, MeshBasicMaterial, MeshToonMaterial, ShapeUtils, Vector2 } from "three";
 import { INK, RAMPS, inkMaterial } from "../../kit/js/materials.js";
 
 const MAX_POINTS = 40; // an outline never has more (arrow.js: 2 * (steps + 1) + 3)
@@ -22,7 +27,7 @@ export function createArrowMesh(stage, color) {
   geometry.setDrawRange(0, 0);
 
   const mesh = new Mesh(geometry, new MeshToonMaterial({ color, gradientMap: RAMPS.card() }));
-  mesh.castShadow = true;
+  mesh.castShadow = false;
   mesh.receiveShadow = false;
   mesh.frustumCulled = false;
   mesh.visible = false;
@@ -34,7 +39,20 @@ export function createArrowMesh(stage, color) {
   mesh.add(ink);
   stage.scene.add(mesh);
 
-  function set(outline, y, height) {
+  const shadowPos = new BufferAttribute(new Float32Array(MAX_POINTS * 3), 3);
+  const shadowGeo = new BufferGeometry();
+  shadowGeo.setAttribute("position", shadowPos);
+  shadowGeo.setIndex(new BufferAttribute(new Uint16Array(MAX_POINTS * 3), 1));
+  const shadow = new Mesh(shadowGeo, new MeshBasicMaterial({ color: INK, transparent: true, opacity: 0.3, depthWrite: false, side: DoubleSide, fog: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+  shadow.renderOrder = 5;
+  shadow.frustumCulled = false;
+  shadow.visible = false;
+  shadow.raycast = () => {};
+  stage.scene.add(shadow);
+
+  // `ground`: { y, opacity, dz } for the shadow below: dz (cm) shifts it towards the
+  // viewer, so it shows beneath the arrow, not hidden by it.
+  function set(outline, y, height, ground = { y: 0.4, opacity: 0.3 }) {
     const n = Math.min(outline.length, MAX_POINTS);
     let area = 0;
     for (let i = 0; i < n; i++) {
@@ -98,7 +116,16 @@ export function createArrowMesh(stage, color) {
     for (const a of [position, normal, outlineNormal, index]) a.needsUpdate = true;
     geometry.setDrawRange(0, k);
     mesh.visible = true;
+
+    for (let i = 0; i < n; i++) shadowPos.setXYZ(i, outline[i][0], ground.y, outline[i][1] + (ground.dz ?? 0));
+    const gi = shadowGeo.index;
+    let g = 0;
+    for (const [a, b, c] of cap) gi.setX(g++, a), gi.setX(g++, b), gi.setX(g++, c);
+    shadowPos.needsUpdate = gi.needsUpdate = true;
+    shadowGeo.setDrawRange(0, g);
+    shadow.material.opacity = ground.opacity;
+    shadow.visible = true;
   }
 
-  return { mesh, set, hide: () => { mesh.visible = false; } };
+  return { mesh, set, hide: () => { mesh.visible = false; shadow.visible = false; } };
 }

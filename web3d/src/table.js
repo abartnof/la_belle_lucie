@@ -209,7 +209,8 @@ export function createTable(canvas, hooks = {}) {
       const { outline } = arrowOutline(arrow.ends, t, { tail: still ? 1 : 0.4, scale: alpha });
       // It hops: up from the card it leaves, down onto the middle of the one it lands on.
       const y = ARROW_LAND + (ARROW_Y - ARROW_LAND) * 4 * t * (1 - t) - (1 - alpha) * 0.6;
-      arrowSolid.set(outline, y, ARROW_THICK * alpha);
+      // Its shadow lies on the surface below it, further towards the viewer and fainter the higher it flies.
+      arrowSolid.set(outline, y, ARROW_THICK * alpha, { y: 0.4, dz: 1.1 * (y - ARROW_LAND), opacity: 0.4 * alpha * (1 - 0.45 * ((y - ARROW_LAND) / (ARROW_Y - ARROW_LAND))) });
     }
     dirty = true;
     return !still;
