@@ -181,3 +181,23 @@ test("spreading a short fan, or none, changes nothing", () => {
   assert.deepEqual(layout(st, 16 / 9, { spread: 4 }).poses, a.poses);
   assert.deepEqual(layout(st, 16 / 9, { spread: null }).poses, a.poses);
 });
+
+test("the camera fit is memoised: a spread alone never refits, and the result equals the plain fit", async () => {
+  const { fitCamera, fitStats } = await import("../src/layout.js");
+  const state = dealt(11);
+  const margins = { top: 0.1, bottom: 0.08, side: 0.02 };
+  const first = layout(state, 16 / 9, { margins });
+  const n = fitStats.fits;
+  for (let i = 0; i < 18; i++) layout(state, 16 / 9, { margins, spread: i });
+  layout({ ...state, fans: state.fans.map((f) => [...f].reverse()) }, 16 / 9, { margins });
+  assert.equal(fitStats.fits, n, "no refit for a spread or for the cards changing places");
+  const plain = fitCamera(first.points, 16 / 9, margins);
+  assert.deepEqual(first.camera, plain);
+  // A different aspect, margins or fan count does refit, and is also exact.
+  for (const [a, m, st] of [[4 / 3, margins, state], [16 / 9, { ...margins, top: 0.2 }, state], [16 / 9, margins, { ...state, fans: state.fans.slice(0, 10) }]]) {
+    const before = fitStats.fits;
+    const lay = layout(st, a, { margins: m });
+    assert.equal(fitStats.fits, before + 1);
+    assert.deepEqual(lay.camera, fitCamera(lay.points, a, m));
+  }
+});

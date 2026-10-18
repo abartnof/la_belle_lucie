@@ -99,3 +99,25 @@ test("the redeal animation is kept, and an unknown one falls back to random", ()
   store.setItem("la-belle-lucie.prefs", JSON.stringify({ redealFx: "confetti" }));
   assert.equal(loadPrefs(store).settings.redealFx, "random");
 });
+
+test("normalizeRules is what the engine does: redeals above 2 mean 2; out of range is Classic", async () => {
+  const { normalizeRules } = await import("../src/prefs.js");
+  assert.equal(normalizeRules(63), 61);
+  assert.equal(normalizeRules(6), 4);
+  assert.equal(normalizeRules(2), 2);
+  assert.equal(normalizeRules(37), 37);
+  for (const bad of [64, -1, 1.5, NaN, "4", null, undefined, 4294967296]) assert.equal(normalizeRules(bad), 4);
+  for (let c = 0; c < 64; c++) assert.equal(normalizeRules(normalizeRules(c)), normalizeRules(c));
+});
+
+test("kept rules are normalised the same way", () => {
+  const store = memory();
+  store.setItem("la-belle-lucie.prefs", JSON.stringify({ v: 1, rules: 63 }));
+  assert.equal(loadPrefs(store).rules, 61);
+});
+
+test("seedProblem: empty is fine (random); anything else must be a whole number in range", async () => {
+  const { seedProblem } = await import("../src/prefs.js");
+  for (const ok of ["", "  ", "0", "12", "4294967295", " 7 "]) assert.equal(seedProblem(ok), null, ok);
+  for (const bad of ["abc", "-1", "1.5", "4294967296", "99999999999", "1e3"]) assert.match(seedProblem(bad), /whole number/, bad);
+});

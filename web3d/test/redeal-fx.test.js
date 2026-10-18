@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Quaternion, Vector3 } from "three";
-import { CARD as UNITS } from "../../kit/js/units.js";
 import { lying } from "../../kit/js/kinematics.js";
 import { layout } from "../src/layout.js";
 import { EFFECTS, EFFECT_NAMES, createRedeal, seeded } from "../src/redeal-fx.js";
@@ -92,5 +91,8 @@ test("a seed fixes an effect", () => {
 test("the effects have names", () => {
   assert.equal(EFFECTS.length, 7);
   for (const e of EFFECTS) assert.ok(EFFECT_NAMES[e]);
-  assert.ok(UNITS.width > 0);
+  assert.deepEqual(Object.keys(EFFECT_NAMES).sort(), [...EFFECTS].sort(), "a name for each effect and no more");
+  const names = Object.values(EFFECT_NAMES);
+  assert.ok(names.every((n) => typeof n === "string" && n.trim().length > 0));
+  assert.equal(new Set(names).size, names.length, "names are distinct");
 });

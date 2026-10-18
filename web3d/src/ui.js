@@ -11,7 +11,7 @@ import { PATTERNS } from "../../kit/js/surfaces.js";
 import { parseTutorial } from "../../kit/js/tutorial.js";
 import TUTORIAL from "../tutorial.md";
 import { hintText } from "./hints.js";
-import { loadPrefs, savePrefs, defaultStore, decodeRules, encodeRules, stepRedeals, PRESETS, OPTIONS, presetOf, parseSeed, REDEAL_FX } from "./prefs.js";
+import { loadPrefs, savePrefs, defaultStore, decodeRules, encodeRules, stepRedeals, PRESETS, OPTIONS, presetOf, parseSeed, seedProblem, normalizeRules, REDEAL_FX } from "./prefs.js";
 import { EFFECT_NAMES } from "./redeal-fx.js";
 import { duePage, pageNote, PAGE_KEYS } from "./tutorial-flow.js";
 
@@ -56,17 +56,33 @@ export function createUi(root, hooks) {
 
   // ---- dialogs ---------------------------------------------------------------
   let openDialog = null;
+  // Where focus goes when a dialog closes and the control that opened it is gone.
+  function focusBack() {
+    if (typeof hooks.focusTable === "function") hooks.focusTable();
+    else if (!bHint.hidden && !bHint.disabled) bHint.focus();
+  }
   function dialog(title, cls) {
     const heading = el("h2", { class: "lbl-h", id: `lbl-h-${cls}` }, title);
     const body = el("div", { class: "lbl-dbody" });
     const node = el("dialog", { class: `lbl-dialog lbl-${cls}`, "aria-labelledby": heading.id }, heading, body);
     let opener = null;
     node.addEventListener("close", () => {
+      // A stale event: the dialog was opened again since it closed.
+      if (node.open) return;
+      if (api.locked) {
+        // The first menu has nothing behind it: however it closed (Escape twice,
+        // a stray close), it comes back.
+        api.reshow();
+        return;
+      }
       if (openDialog === api) openDialog = null;
-      (opener?.isConnected ? opener : null)?.focus?.();
+      const back = opener?.isConnected && opener !== document.body && !opener.disabled ? opener : null;
+      if (back) back.focus?.();
+      else focusBack();
       api.onclose?.();
     });
     node.addEventListener("cancel", (e) => {
+      api.escaped = true;
       if (api.locked) e.preventDefault();
     });
     node.addEventListener("click", (e) => {
@@ -78,13 +94,33 @@ export function createUi(root, hooks) {
       heading,
       onclose: null,
       locked: false,
+      escaped: false,
+      returnTo: null, // where focus goes back to, if not where it was on opening
+      focusIn() {
+        (node.querySelector("[data-first]") ?? node.querySelector("button, input, select"))?.focus();
+      },
       open() {
-        opener = document.activeElement;
+        api.escaped = false;
+        if (node.open) {
+          // Already showing (a tutorial page replaced by another): keep what it will return focus to.
+          openDialog = api;
+          api.focusIn();
+          return;
+        }
+        const was = document.activeElement;
+        opener = api.returnTo ?? (was && !node.contains(was) ? was : opener);
         openDialog = api;
+        api.show();
+      },
+      show() {
         if (!node.isConnected) root.append(node);
         if (typeof node.showModal === "function") node.showModal();
         else node.setAttribute("open", "");
-        (node.querySelector("[data-first]") ?? node.querySelector("button, input, select"))?.focus();
+        api.focusIn();
+      },
+      reshow() {
+        openDialog = api;
+        api.show();
       },
       close() {
         if (openDialog === api) openDialog = null;
@@ -162,11 +198,16 @@ export function createUi(root, hooks) {
     );
     seen.add(key);
     persist();
+    // Escape dismisses the tutorial for now (the pages not yet read stay unread:
+    // the just-in-time ones come when their element first does, and all are in Help);
+    // "Got it" goes on to the next page that is due.
     tut.onclose = () => {
       tut.onclose = null;
-      if (!fromHelp) queueMicrotask(checkTutorial);
+      if (!fromHelp && !tut.escaped) queueMicrotask(checkTutorial);
     };
-    if (tut.node.open) tut.node.close();
+    // Another page while one is showing replaces it in place (no close and reopen,
+    // whose late close event would undo the new page).
+    if (!tut.node.open) tut.returnTo = fromHelp ? bHelp : null;
     tut.open();
   }
   function checkTutorial() {
@@ -230,24 +271,54 @@ export function createUi(root, hooks) {
   function openNewGame({ first = false, seed = null, rules = null } = {}) {
     const d = dialog("New game", "newgame");
     d.locked = first;
-    let code = rules ?? (state && Number.isInteger(state.rules) ? state.rules : prefs.rules);
+    let code = normalizeRules(rules ?? (state && Number.isInteger(state.rules) ? state.rules : prefs.rules));
     const form = el("div", { class: "lbl-form" });
-    const seedInput = el("input", { type: "text", inputmode: "numeric", id: "lbl-seed", autocomplete: "off", placeholder: "Random", "aria-describedby": "lbl-seed-d", value: seed ?? false });
+    const seedInput = el("input", { type: "text", inputmode: "numeric", id: "lbl-seed", autocomplete: "off", placeholder: "Random", "aria-describedby": "lbl-seed-d lbl-seed-bad", value: seed ?? false });
     seedInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
         go.click();
       }
     });
+    const seedMsg = el("p", { class: "lbl-note lbl-bad", id: "lbl-seed-bad", role: "alert", hidden: true });
+    // Says why the deal number cannot be used (and marks the field), or hides the message.
+    function checkSeed() {
+      const why = seedProblem(seedInput.value);
+      seedMsg.hidden = !why;
+      seedMsg.textContent = why ?? "";
+      if (why) seedInput.setAttribute("aria-invalid", "true");
+      else seedInput.removeAttribute("aria-invalid");
+      return !why;
+    }
+    seedInput.addEventListener("input", () => {
+      if (!seedMsg.hidden) checkSeed();
+    });
     const inProgress = () => Boolean(state && state.prompt === "play" && state.moves > 0);
     const confirmBox = el("div", { class: "lbl-confirm", hidden: true, role: "alert" }, el("p", {}, "Leave the game in progress and deal a new one?"));
     function start() {
+      if (!checkSeed()) {
+        confirmBox.hidden = true;
+        go.hidden = false;
+        seedInput.focus();
+        return;
+      }
       prefs.rules = code;
       persist();
+      const deal = { seed: parseSeed(seedInput.value), rules: code };
+      d.locked = false;
       d.close();
-      hooks.newGame({ seed: parseSeed(seedInput.value), rules: code });
+      try {
+        hooks.newGame(deal);
+      } finally {
+        // Nothing dealt (a fault): never leave the page with no game and no menu.
+        if (!state) openNewGame({ first: true, seed: seedInput.value || null, rules: code });
+      }
     }
     const go = button("Deal", () => {
+      if (!checkSeed()) {
+        seedInput.focus();
+        return;
+      }
       if (inProgress() && confirmBox.hidden) {
         confirmBox.hidden = false;
         go.hidden = true;
@@ -269,12 +340,13 @@ export function createUi(root, hooks) {
           el("div", { class: "lbl-opt" }, el("span", { id: "lbl-o-red" }, OPTIONS.redeals.name), " ", el("span", { class: "lbl-stepper", role: "group", "aria-labelledby": "lbl-o-red" }, button("−", () => { code = encodeRules({ ...o, redeals: stepRedeals(o.redeals, -1) }); draw(); }, "lbl-step", { "aria-label": "Fewer redeals", disabled: o.redeals <= 0 }), el("output", { class: "lbl-count", "aria-live": "polite" }, String(o.redeals)), button("+", () => { code = encodeRules({ ...o, redeals: stepRedeals(o.redeals, 1) }); draw(); }, "lbl-step", { "aria-label": "More redeals", disabled: o.redeals >= 2 })), el("p", { class: "lbl-note" }, OPTIONS.redeals.words)),
           ...["draw", "king", "trefoil"].map((k) => el("div", { class: "lbl-opt" }, el("label", { for: `lbl-o-${k}` }, el("input", { type: "checkbox", id: `lbl-o-${k}`, "aria-describedby": `lbl-o-${k}-d`, checked: o[k], onchange: (e) => { code = encodeRules({ ...o, [k]: e.target.checked }); draw(); } }), " ", OPTIONS[k].name), el("p", { class: "lbl-note", id: `lbl-o-${k}-d` }, OPTIONS[k].words))),
         ),
-        el("div", { class: "lbl-opt" }, el("label", { for: "lbl-seed" }, "Deal number "), seedInput, el("p", { class: "lbl-note", id: "lbl-seed-d" }, "Leave empty for a random deal. The same number and rules always deal the same game.")),
+        el("div", { class: "lbl-opt" }, el("label", { for: "lbl-seed" }, "Deal number "), seedInput, el("p", { class: "lbl-note", id: "lbl-seed-d" }, "Leave empty for a random deal. The same number and rules always deal the same game."), seedMsg),
       );
     }
     draw();
     d.body.append(form, confirmBox, el("div", { class: "lbl-row lbl-actions" }, go, first ? null : button("Cancel", () => d.close(), "lbl-quiet")));
     d.onclose = () => d.node.remove();
+    if (seed != null) checkSeed(); // a bad number from a shared link is said, not dropped
     d.open();
   }
 
@@ -332,5 +404,5 @@ export function createUi(root, hooks) {
   }
 
   applyHintsSetting();
-  return { update: (s) => update(s), settings: settingsNow, busy, openMenu: (o) => openNewGame(o) };
+  return { update: (s) => update(s), settings: settingsNow, busy, openMenu: (o) => openNewGame(o), showPage: (k, o) => showPage(k, o) };
 }

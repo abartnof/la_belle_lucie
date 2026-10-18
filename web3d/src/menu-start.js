@@ -3,9 +3,9 @@
 // prefs, else Classic; the deal number empty (random) unless the hash gave one.
 // Pure. The page never deals before the player confirms.
 
-import { CLASSIC } from "./prefs.js";
+import { CLASSIC, normalizeRules } from "./prefs.js";
 
-// given: { seed, rules } from the hash (each may be null). prefs: { rules }.
+// given: { seed, rules, badSeed } from the hash (each may be null). prefs: { rules }.
 export function firstMenu(given, prefs) {
-  return { seed: given?.seed ?? null, rules: given?.rules ?? prefs?.rules ?? CLASSIC };
+  return { seed: given?.seed ?? given?.badSeed ?? null, rules: normalizeRules(given?.rules ?? prefs?.rules ?? CLASSIC) };
 }

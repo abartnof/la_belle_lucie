@@ -7,6 +7,7 @@
 
 import { decodeBase64 } from "../../kit/js/engine.js";
 import { loadEngine } from "./engine.js";
+import { hashFor, parseHash } from "./hash.js";
 import { cardName } from "./layout.js";
 import { firstMenu } from "./menu-start.js";
 import { defaultStore, loadPrefs } from "./prefs.js";
@@ -18,18 +19,7 @@ import { createUi } from "./ui.js";
 
 const DEFAULT_RULES = 4;
 
-// "#seed=12&rules=4" -> { seed, rules } (either may be absent).
-export function parseHash(hash) {
-  const params = new URLSearchParams(String(hash).replace(/^#/, ""));
-  const num = (k, max) => {
-    const v = params.get(k);
-    return v !== null && /^\d{1,10}$/.test(v) && Number(v) <= max ? Number(v) : null;
-  };
-  return { seed: num("seed", 4294967295), rules: num("rules", 63) };
-}
-
-export const hashFor = (seed, rules) => `#seed=${seed}&rules=${rules}`;
-
+const WAIT_WORDS = "Wait for the cards to settle.";
 const randomSeed = () => Math.floor(Math.random() * 2 ** 32);
 
 // "to the seven of hearts in fan 4", "to empty fan 2", "home".
@@ -125,7 +115,11 @@ export async function run(makeEngine) {
   }
 
   function send(command) {
-    if (stopped || animating) return;
+    if (stopped) return;
+    if (animating) {
+      announce(WAIT_WORDS);
+      return;
+    }
     const result = engine.send(command);
     if (!result?.ok) {
       announce("That move is not allowed.");
@@ -157,6 +151,7 @@ export async function run(makeEngine) {
       paint();
     },
     redeal: () => state.legal.includes("redeal") && send("redeal"),
+    focusTable: () => canvas.focus(),
     settingsChanged(s) {
       settings = { ...settings, ...s };
       table.setSettings(settings);
@@ -167,18 +162,25 @@ export async function run(makeEngine) {
   table.setSettings(settings);
 
   table.onClick((ev) => {
-    if (!state || stopped || animating) return;
+    if (!state || stopped) return;
+    if (animating) {
+      if (ev.action !== "clear") announce(WAIT_WORDS);
+      return;
+    }
     const d = decide(state, sel, ev, { autoHome: settings.autoHome });
     if (d.kind === "send") send(d.command);
     else if (d.kind === "select") {
       sel = d.sel;
       paint();
       const targets = targetsOf(state, sel);
-      announce(`Selected the ${cardName(sel.card)}. It can go ${targets.map((t) => targetWords(state, t)).join(", or ")}.`);
+      const where = targets.map((t) => targetWords(state, t)).join(", or ");
+      announce(sel.pos == null ? `Selected the ${cardName(sel.card)}. It can go ${where}.` : `Selected the ${cardName(sel.card)}, buried in fan ${sel.fan + 1}, to draw. It can go ${where}. D picks the next buried card.`);
     } else if (d.kind === "clear") {
       sel = null;
       paint();
       announce("Selection cleared.");
+    } else if (ev.action === "cycle") {
+      announce("No buried card in this fan can be drawn.");
     } else if (ev.card && ev.action !== "clear") {
       announce(`The ${cardName(ev.card)} cannot move.`);
     }
@@ -190,7 +192,7 @@ export async function run(makeEngine) {
   ui.openMenu({ ...firstMenu(given, prefs), first: true });
 
   // For tests and the curious: a read-only window onto the page.
-  window.lbl = { state: () => state, table, send: (c) => send(c), selected: () => sel, stopped: () => stopped };
+  window.lbl = { ui, state: () => state, table, send: (c) => send(c), selected: () => sel, stopped: () => stopped };
 }
 
 if (typeof document !== "undefined" && typeof WASM_BASE64 !== "undefined") {

@@ -38,7 +38,7 @@ def fresh(browser, url, problems, requests, tag, seen=SEEN_ALL, hash_="#seed=7&r
     if clear:
         ctx.add_init_script(f'if (!sessionStorage.getItem("t")) {{ sessionStorage.setItem("t","1"); localStorage.setItem("{KEY}", JSON.stringify({{v: 1, seen: {seen}}})); }}')
     page = ctx.new_page()
-    page.on("console", lambda m: m.type == "error" and problems.append(f"{tag}: console error: {m.text}"))
+    page.on("console", lambda m: m.type == "error" and "injected fault" not in m.text and problems.append(f"{tag}: console error: {m.text}"))
     page.on("pageerror", lambda e: problems.append(f"{tag}: page error: {e}"))
     page.on("request", lambda r: requests.append(r.url))
     page.goto(url + hash_)
@@ -69,6 +69,33 @@ def dialog_title(page):
     return page.locator(OPEN + " h2").first.inner_text() if page.locator(OPEN).count() else None
 
 
+FOLLOW_HINTS = """(stop) => {
+  for (let i = 0; i < 400; i++) {
+    const st = window.lbl.state();
+    if (st.prompt !== "play" || stop(st)) return true;
+    window.lbl.send("hint");
+    const h = window.lbl.state().hint;
+    if (!h) return false;
+    window.lbl.send(h.move.startsWith("draw") || h.move === "redeal" ? h.move : "move " + h.move);
+  }
+  return false;
+}"""
+
+
+def follow_until_stuck(page):
+    """Follow the engine's hints until only a redeal is left ."""
+    page.evaluate("(" + FOLLOW_HINTS + ")((st) => st.legal.includes('redeal'))")
+
+
+def table_say(page, want=""):
+    """What the live region says: announce() speaks a tick later, and the software WebGL is slow, so wait for `want`."""
+    try:
+        page.wait_for_function("(w) => document.querySelector('#table-live').textContent.includes(w) && document.querySelector('#table-live').textContent !== ''", arg=want or "", timeout=5000)
+    except Exception:
+        pass
+    return page.inner_text("#table-live")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--page", default=str(ROOT / "web3d" / "la-belle-lucie.html"))
@@ -96,10 +123,18 @@ def main() -> int:
             bad("first: there is nothing to cancel back to")
         if not page.evaluate("document.activeElement?.closest('dialog[open]') !== null"):
             bad("first: the menu should take focus")
-        page.keyboard.press("Escape")
+        # Chromium honours preventDefault() on `cancel` only once: the menu must come back however often.
+        for n in range(3):
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+            if not page.locator(OPEN).count():
+                bad(f"first: Escape #{n + 1} closed the first menu for good")
+            elif not page.evaluate("document.activeElement?.closest('dialog[open]') !== null"):
+                bad(f"first: focus left the first menu after Escape #{n + 1}")
+        page.mouse.click(3, 3)  # the backdrop
         page.wait_for_timeout(300)
         if not page.locator(OPEN).count():
-            bad("first: Escape must not close the first menu")
+            bad("first: a click on the backdrop closed the first menu")
         page.wait_for_timeout(800)
         if page.evaluate("window.lbl.state()") is not None:
             bad("first: still nothing dealt after waiting")
@@ -382,6 +417,33 @@ def main() -> int:
         if page.evaluate(f"{clock}.active()"):
             bad("redeal: undoing a redeal should play no effect")
         settle(page)
+        # A dropped command is said; a fault in the render loop frees the table; the watchdog
+        # frees it when frames stop; the table redraws and plays on afterwards.
+        page.evaluate(f"{clock}.manual(true)")
+        page.evaluate("window.lbl.send('redeal')")
+        page.evaluate("window.lbl.send('hint')")
+        if "Wait for the cards to settle" not in table_say(page, "Wait for the cards"):
+            bad("redeal: a command dropped while the cards move should be announced")
+        page.evaluate(f"{clock}.fault()")
+        page.wait_for_function(f"!{clock}.active() && !window.lbl.table.busy()", timeout=WAIT)
+        if undo.is_disabled():
+            bad("fault: after a fault in the frame the table must be usable again (Undo is still disabled)")
+        page.evaluate("window.lbl.send('hint')")
+        if state(page)["hint"] is None and state(page)["prompt"] == "play":
+            bad("fault: commands must work after a fault in the frame")
+        page.evaluate(f"{clock}.manual(false)")
+        undo.click()
+        page.wait_for_function("(n) => window.lbl.state().redeals_left === n", arg=st0["redeals_left"], timeout=WAIT)
+        settle(page)
+        page.evaluate(f"{clock}.manual(true)")
+        page.evaluate("window.lbl.send('redeal')")
+        page.wait_for_function(f"!{clock}.active()", timeout=20_000)  # the watchdog: about 6 s of wall time
+        if page.evaluate("window.lbl.table.busy()") or undo.is_disabled():
+            bad("watchdog: a stalled effect should be snapped and the table freed")
+        page.evaluate(f"{clock}.manual(false)")
+        undo.click()
+        page.wait_for_function("(n) => window.lbl.state().redeals_left === n", arg=st0["redeals_left"], timeout=WAIT)
+        settle(page)
         # "Simple" is the plain slide, with no effect, and the setting persists.
         page.get_by_role("button", name="Settings").click()
         page.wait_for_selector(OPEN)
@@ -445,6 +507,131 @@ def main() -> int:
                 bad(f"focus: Escape should close the {name} dialog")
             elif page.evaluate("document.activeElement?.textContent") != name:
                 bad(f"focus: after Escape focus should return to {name}, is on {page.evaluate('document.activeElement?.textContent')!r}")
+        ctx.close()
+
+        # ---- an effect cut short by a new game is not an error
+        ctx, page = fresh(browser, url, problems, requests, "cutshort")
+        follow_until_stuck(page)
+        settle(page)
+        page.get_by_role("button", name="Settings").click()
+        page.wait_for_selector(OPEN)
+        page.locator("#lbl-s-redeal").select_option("tornado")
+        page.keyboard.press("Escape")
+        page.evaluate("window.lbl.table.redealClock.manual(true)")
+        page.evaluate("window.lbl.send('redeal')")
+        if not page.evaluate("window.lbl.table.redealClock.active()"):
+            bad("cutshort: the effect did not start")
+        page.get_by_role("button", name="New game").first.click()
+        page.wait_for_selector(OPEN)
+        page.get_by_role("button", name="Deal", exact=True).click()
+        page.get_by_role("button", name="Yes, deal anew").click()
+        page.wait_for_function("window.lbl.state().moves === 0 && !window.lbl.table.redealClock.active()", timeout=WAIT)
+        page.wait_for_timeout(300)  # any console.error is caught by the page listener
+        page.evaluate("window.lbl.table.redealClock.manual(false)")
+        ctx.close()
+
+        # ---- rules and deal numbers from a shared link are normalised and flagged
+        ctx, page = fresh(browser, url, problems, requests, "badlink", hash_="#seed=4294967296&rules=63", deal=False)
+        if page.input_value("#lbl-seed") != "4294967296" or not page.locator("#lbl-seed-bad").is_visible():
+            bad("badlink: an out-of-range deal number from the hash should be shown with a message, not dropped")
+        if page.locator(".lbl-count").inner_text() != "2":
+            bad(f"badlink: rules=63 deals with 2 redeals, the menu shows {page.locator('.lbl-count').inner_text()!r}")
+        page.get_by_role("button", name="Deal", exact=True).click()
+        page.wait_for_timeout(500)
+        if state(page) is not None or not page.locator(OPEN).count():
+            bad("badlink: an invalid deal number must not deal a random game")
+        page.fill("#lbl-seed", "abc")
+        page.get_by_role("button", name="Deal", exact=True).click()
+        page.wait_for_timeout(300)
+        if state(page) is not None or not page.locator("#lbl-seed-bad").is_visible():
+            bad("badlink: a typed non-number should be refused with a message")
+        page.fill("#lbl-seed", "")
+        if page.locator("#lbl-seed-bad").is_visible():
+            bad("badlink: the message should go once the number is fixed")
+        page.get_by_role("button", name="Deal", exact=True).click()
+        settle(page)
+        if state(page)["rules"] != 61 or "rules=61" not in page.evaluate("location.hash"):
+            bad(f"badlink: rules=63 should be dealt, shown and saved as 61, got {state(page)['rules']}")
+        if page.evaluate(f'JSON.parse(localStorage.getItem("{KEY}")).rules') != 61:
+            bad("badlink: the saved rules should be the normalised code")
+        ctx.close()
+
+        # ---- tutorial dialogs: Escape dismisses, focus returns, a page replaced in place
+        ctx, page = fresh(browser, url, problems, requests, "tutdlg", seen="[]")
+        page.wait_for_selector(OPEN, timeout=WAIT)
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(700)
+        if page.locator(OPEN).count():
+            bad("tutdlg: Escape on a tutorial page should dismiss the tutorial, not open the next page")
+        if page.evaluate("document.activeElement?.id") != "stage":
+            bad(f"tutdlg: focus should return to the table, is on {page.evaluate('document.activeElement?.tagName')}")
+        ctx.close()
+        ctx, page = fresh(browser, url, problems, requests, "tutswap", seen="[]")
+        page.wait_for_selector(OPEN, timeout=WAIT)
+        page.evaluate("window.lbl.ui.showPage('building')")
+        page.evaluate("window.lbl.ui.showPage('redeal')")
+        page.wait_for_timeout(500)
+        if page.locator(OPEN).count() != 1 or dialog_title(page) != "Redeal":
+            bad(f"tutswap: a page opened over a page should replace it, got {dialog_title(page)!r}")
+        page.get_by_role("button", name="Got it").click()
+        page.wait_for_timeout(500)
+        if dialog_title(page) not in (None, "The table", "The foundations", "Building"):
+            bad(f"tutswap: unexpected dialog {dialog_title(page)!r}")
+        # Whatever follows, the dialogs close in the end and focus is never lost to <body>.
+        for _ in range(4):
+            if not page.locator(OPEN).count():
+                break
+            page.get_by_role("button", name="Got it").click()
+            page.wait_for_timeout(400)
+        if page.locator(OPEN).count() or page.evaluate("document.activeElement === document.body"):
+            bad("tutswap: after the last page focus should be on a control, not <body>")
+        ctx.close()
+
+        # ---- the draw from the keyboard
+        ctx, page = fresh(browser, url, problems, requests, "drawkeys", hash_="#seed=3&rules=12", reduced=True)
+        page.evaluate("(" + FOLLOW_HINTS + ")((st) => st.legal.some((m) => m.startsWith('draw ')))")
+        st = state(page)
+        cands = sorted({(int(m[6:].split(":")[0]), int(m.split(":")[1].split(">")[0])) for m in st["legal"] if m.startswith("draw ")})
+        if st["draw"] != "ready" or not cands:
+            bad(f"drawkeys: could not reach a draw-ready state ({st['draw']})")
+        else:
+            fan = next(f for f, _ in cands if sum(1 for g, _ in cands if g == f) >= 1)
+            here = [pos for f, pos in cands if f == fan]
+            page.evaluate("(f) => window.lbl.table.focusFan(f)", fan)
+            page.focus("#stage")
+            page.keyboard.press("d")
+            sel = page.evaluate("window.lbl.selected()")
+            if not sel or sel["fan"] != fan or sel["pos"] != here[0] or sel["card"] != st["fans"][fan][here[0]]:
+                bad(f"drawkeys: D should choose the first buried card of the fan, got {sel!r}")
+            said = table_say(page, "buried")
+            if "buried" not in said or " can go " not in said:
+                bad(f"drawkeys: the live region should name the card and its targets, said {said!r}")
+            if len(here) > 1:
+                page.keyboard.press("d")
+                if page.evaluate("window.lbl.selected().pos") != here[1]:
+                    bad("drawkeys: D again should choose the next buried card")
+            page.keyboard.press("d")
+            page.keyboard.press("d")
+            sel = page.evaluate("window.lbl.selected()")
+            dest = [m for m in st["legal"] if m.startswith(f"draw f{fan}:{sel['pos']}>")] if sel else []
+            if not dest:
+                bad("drawkeys: no legal draw for the chosen card")
+            else:
+                target = dest[0].split(">")[1]
+                before = st["moves"]
+                if target == "h":
+                    page.keyboard.press("h")
+                else:
+                    page.evaluate("(f) => window.lbl.table.focusFan(f)", int(target[1:]))
+                    page.keyboard.press("Enter")
+                page.wait_for_function("(n) => window.lbl.state().moves > n", arg=before, timeout=WAIT)
+                if page.evaluate("window.lbl.selected()") is not None:
+                    bad("drawkeys: the selection should clear after the draw")
+        page.focus("#stage")
+        page.evaluate("window.lbl.table.focusFan(0)")
+        page.keyboard.press("d")
+        if state(page)["draw"] != "ready" and "No buried card" not in table_say(page, "No buried card"):
+            bad("drawkeys: D in a fan with nothing to draw should say so")
         ctx.close()
 
         # ---- reduced motion: play still works, tutorial still shows

@@ -64,3 +64,52 @@ test("the draw: a buried card is chosen only when the draw is ready", () => {
 test("nothing is played once the game is over", () => {
   assert.deepEqual(decide(state({ prompt: "won", legal: [] }), null, click(1, "AS")), { kind: "none" });
 });
+
+// ---- the draw from the keyboard: D cycles the buried cards with a legal draw
+const drawing = (extra = {}) => state({ draw: "ready", legal: ["draw f2:0>f3", "draw f2:0>h", "draw f2:1>f3", "f0>f3"], ...extra });
+const cycle = (fan) => ({ fan, home: false, card: null, action: "cycle" });
+
+test("drawCandidates lists the buried cards with a draw, with their targets, in order", async () => {
+  const { drawCandidates } = await import("../src/selection.js");
+  const c = drawCandidates(drawing(), 2);
+  assert.deepEqual(c.map((x) => [x.card, x.pos]), [["7S", 0], ["5C", 1]]);
+  assert.deepEqual(targetsOf(drawing(), c[0]), [{ fan: 3 }, { home: true, suit: "S" }]);
+  assert.deepEqual(drawCandidates(drawing(), 0), []);
+  assert.deepEqual(drawCandidates(state({ legal: drawing().legal }), 2), [], "draw not ready");
+});
+
+test("D chooses the first candidate, then the next, wrapping round", () => {
+  const s = drawing();
+  const a = decide(s, null, cycle(2));
+  assert.deepEqual(a, { kind: "select", sel: { fan: 2, card: "7S", pos: 0 } });
+  const b = decide(s, a.sel, cycle(2));
+  assert.deepEqual(b, { kind: "select", sel: { fan: 2, card: "5C", pos: 1 } });
+  assert.deepEqual(decide(s, b.sel, cycle(2)), a);
+});
+
+test("D with nothing to draw in that fan, or none chosen fan, does nothing", () => {
+  assert.deepEqual(decide(drawing(), null, cycle(0)), { kind: "none" });
+  assert.deepEqual(decide(drawing(), null, cycle(null)), { kind: "none" });
+  assert.deepEqual(decide(state(), null, cycle(2)), { kind: "none" });
+});
+
+test("a top-card selection elsewhere does not stop D choosing in this fan", () => {
+  const s = drawing();
+  const top = { fan: 0, card: "6H", pos: null };
+  assert.deepEqual(decide(s, top, cycle(2)).sel, { fan: 2, card: "7S", pos: 0 });
+});
+
+test("Enter on a target fan plays the drawn card; H plays it home from its own fan", () => {
+  const s = drawing();
+  const sel = { fan: 2, card: "7S", pos: 0 };
+  assert.deepEqual(decide(s, sel, click(3, null)), { kind: "send", command: "draw f2:0>f3" });
+  assert.deepEqual(decide(s, sel, { fan: 2, home: false, card: "KD", action: "home" }), { kind: "send", command: "draw f2:0>h" });
+  // H with no home draw for that card leaves the selection alone
+  const t = drawing({ legal: ["draw f2:0>f3", "f2>h"] });
+  assert.deepEqual(decide(t, sel, { fan: 2, home: false, card: "KD", action: "home" }), { kind: "send", command: "move f2>h" });
+});
+
+test("H with a drawn card chosen prefers it to the fan's top card", () => {
+  const s = drawing({ legal: ["draw f2:0>h", "f2>h"] });
+  assert.deepEqual(decide(s, { fan: 2, card: "7S", pos: 0 }, { fan: 2, home: false, card: "KD", action: "home" }), { kind: "send", command: "draw f2:0>h" });
+});

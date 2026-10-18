@@ -40,7 +40,7 @@ function checked(kept, reducedMotion) {
   out.speed = SPEEDS.includes(k.speed) ? k.speed : reducedMotion ? "instant" : DEFAULTS.speed;
   return {
     settings: out,
-    rules: Number.isInteger(k.rules) && k.rules >= 0 && k.rules < 64 ? k.rules : CLASSIC,
+    rules: normalizeRules(k.rules),
     seen: Array.isArray(k.seen) ? [...new Set(k.seen.filter((s) => typeof s === "string"))] : [],
   };
 }
@@ -74,6 +74,15 @@ export function savePrefs(store, prefs) {
 }
 
 // ---- the rules code: bit 0 in order | bits 1-2 redeals | 3 draw | 4 king | 5 trefoil
+
+// A rules code as the engine reads and writes it back (Rules::from_code then
+// code): a redeal count above 2 means 2; anything not a code from 0 to 63 is Classic.
+// The menu, the prefs and the hash all go through this, so what the menu shows is
+// the game that is dealt.
+export function normalizeRules(code) {
+  if (!Number.isInteger(code) || code < 0 || code > 63) return CLASSIC;
+  return (code & ~6) | (Math.min(2, (code >> 1) & 3) << 1);
+}
 
 export const REDEAL_STEPS = Object.freeze([0, 2]); // what the sources support
 
@@ -125,4 +134,11 @@ export function parseSeed(text) {
   if (!/^\d{1,10}$/.test(t)) return null;
   const n = Number(t);
   return n <= 4294967295 ? n : null;
+}
+
+// Why a deal number from the menu's text cannot be used, or null if it can (an
+// empty text is fine: a random deal).
+export function seedProblem(text) {
+  const t = String(text ?? "").trim();
+  return t === "" || parseSeed(t) !== null ? null : "A deal number is a whole number from 0 to 4294967295. Leave it empty for a random deal.";
 }

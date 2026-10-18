@@ -21,6 +21,18 @@ export function pickable(state, ev) {
   return null;
 }
 
+// The buried cards of a fan that the draw may take now, in order from the bottom:
+// [{ fan, card, pos }]. Empty unless the draw is ready.
+export function drawCandidates(state, fan) {
+  if (state.draw !== "ready" || fan == null) return [];
+  const cards = fanOf(state, fan);
+  const out = [];
+  for (let at = 0; at < cards.length - 1; at++) {
+    if (state.legal.some((m) => m.startsWith(`draw f${fan}:${at}>`))) out.push({ fan, card: cards[at], pos: at });
+  }
+  return out;
+}
+
 const prefix = (sel) => (sel.pos == null ? `f${sel.fan}>` : `draw f${sel.fan}:${sel.pos}>`);
 
 // Where the chosen card may go: [{ fan } | { home: true, suit }].
@@ -47,9 +59,20 @@ export function decide(state, sel, ev, { autoHome = false } = {}) {
   const top = ev.fan != null ? fanOf(state, ev.fan).at(-1) : undefined;
   const home = (fan) => ({ kind: "send", command: `move f${fan}>h` });
 
+  // H with a drawn card chosen in this very fan: it goes home if it may.
+  if (ev.action === "home" && sel && sel.pos != null && ev.fan === sel.fan && legal.has(`${prefix(sel)}h`)) {
+    return { kind: "send", command: commandFor(sel, "h") };
+  }
   // A double click, or H on the keyboard: the top card home, if it may go.
   if ((ev.action === "dblclick" || ev.action === "home") && ev.fan != null && ev.card === top && legal.has(`f${ev.fan}>h`)) {
     return home(ev.fan);
+  }
+  // D on the keyboard: choose the next buried card of this fan that the draw may take.
+  if (ev.action === "cycle") {
+    const c = drawCandidates(state, ev.fan);
+    if (!c.length) return { kind: "none" };
+    const at = sel && sel.fan === ev.fan && sel.pos != null ? c.findIndex((x) => x.pos === sel.pos) : -1;
+    return { kind: "select", sel: c[(at + 1) % c.length] };
   }
   if (sel) {
     const dest = ev.home ? "h" : ev.fan != null ? `f${ev.fan}` : null;

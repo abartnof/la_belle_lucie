@@ -52,6 +52,10 @@ export function columnsFor(aspect) {
 // width (the overlay's strips; main.js passes what the ui leaves).
 export const MARGINS = Object.freeze({ top: 0.07, bottom: 0.05, side: 0.02 });
 
+const fitMemo = new Map();
+// How many camera fits have been computed (tests).
+export const fitStats = { fits: 0 };
+
 // The poses and slots for a state's fans and the foundations, for a window of
 // this aspect (width / height).
 // `spread` is the index of a fan to lay out at the full readable strip, raised
@@ -119,7 +123,15 @@ export function layout(state, aspect, { margins = MARGINS, spread = null } = {})
   for (const s of slots) addRect(s.x0, s.x0 + s.inner, s.cz);
   for (const h of home) addRect(h.x0, h.x1, h.cz);
   // The lifted card in hand (see table.js) rises a little: keep it in view too.
-  const camera = fitCamera(points, aspect, margins);
+  // The fit depends only on the fan count, the aspect and the margins (not on
+  // which fan is spread, nor on where the cards lie): it is costly, so it is kept.
+  const key = `${fans.length}|${aspect}|${margins.top}|${margins.bottom}|${margins.side}`;
+  let camera = fitMemo.get(key);
+  if (!camera) {
+    camera = fitCamera(points, aspect, margins);
+    if (fitMemo.size >= 16) fitMemo.delete(fitMemo.keys().next().value);
+    fitMemo.set(key, camera);
+  }
 
   return { portrait: cols === 4, cols, rows, poses, slots, home, camera, pitchX, pitchZ, points };
 }
@@ -166,6 +178,7 @@ function basis({ eye, at }) {
 // between the margins: as near as the margins allow, the aim moved until the
 // points are centred in what the margins leave.
 export function fitCamera(points, aspect, margins = MARGINS, { pitch = 80, maxDistance = 150 } = {}) {
+  fitStats.fits++;
   const pr = (pitch * Math.PI) / 180;
   const dir = [0, Math.sin(pr), Math.cos(pr)];
   const winLo = -1 + 2 * margins.bottom;

@@ -22,6 +22,7 @@
 
 import { BufferAttribute, BufferGeometry, CanvasTexture, DoubleSide, Mesh, MeshBasicMaterial, PlaneGeometry, Plane, Raycaster, SRGBColorSpace, Vector2, Vector3, Quaternion, PointLight, RingGeometry } from "three";
 import { EFFECTS, createRedeal } from "./redeal-fx.js";
+import { createFxRun } from "./fx-run.js";
 import { createDeck, INKS } from "../../kit/js/deck.js";
 import { M3 } from "../../kit/js/easing.js";
 import { jumboTextures, largeTextHere } from "../../kit/js/faces.js";
@@ -111,7 +112,7 @@ export function createTable(canvas, hooks = {}) {
   canvas.setAttribute("role", "application");
   canvas.setAttribute(
     "aria-label",
-    "La Belle Lucie table. Arrow keys move between fans, Enter selects a card or moves it, H sends a card home, Escape clears.",
+    "La Belle Lucie table. Arrow keys move between fans, Enter selects a card or moves it, H sends a card home, D picks a buried card to draw when the draw is ready, Escape clears.",
   );
   canvas.style.touchAction = "none";
   canvas.style.outline = "none";
@@ -283,9 +284,13 @@ export function createTable(canvas, hooks = {}) {
     return { ...margins, ...(hooks.margins?.() ?? {}) };
   }
 
+  const marginsKey = (m) => `${aspect()}|${m.top}|${m.bottom}|${m.side}`;
+  let usedMargins = null;
   function relayout({ instant = false } = {}) {
     if (!state) return;
-    lay = layout(state, aspect(), { margins: wantMargins(), spread: spreadNow });
+    const want = wantMargins();
+    usedMargins = marginsKey(want);
+    lay = layout(state, aspect(), { margins: want, spread: spreadNow });
     const to = lay.camera;
     const same = cam && [...to.eye, ...to.at, to.fov].every((v, i) => Math.abs(v - [...cam.eye, ...cam.at, cam.fov][i]) < 0.01);
     if (same && !camAnim) {
@@ -357,10 +362,11 @@ export function createTable(canvas, hooks = {}) {
     });
     const slots = targets.map((t, j) => ({ x: t.position.x, y: t.position.y, z: t.position.z, yaw: lay.poses[codes[j]].yaw, fan: lay.poses[codes[j]].fan }));
     fxProps();
-    fx = { sim: createRedeal(name, { from, slots, rng: Math.random }), codes, targets, last: null };
+    const sim = createRedeal(name, { from, slots, rng: Math.random });
+    fx = { sim, codes, targets, last: null };
     const moving = new Set(codes);
     for (const [code, e] of entries) if (!moving.has(code)) e.mesh.visible = !!lay.poses[code];
-    hooks.busy?.(true);
+    fxRun.start(sim);
     return true;
   }
   function writeFx() {
@@ -382,31 +388,30 @@ export function createTable(canvas, hooks = {}) {
   }
   // Advance the effect by dt seconds; false once it is over.
   function stepFx(dt) {
-    if (!fx) return false;
-    fx.sim.step(dt);
-    if (fx.sim.done() || !fx.sim.valid()) {
-      endFx();
-      return false;
-    }
-    writeFx();
-    return true;
+    return fx ? fxRun.step(dt) : false;
   }
-  // Snap every card to the pose the layout gives it, and say if the physics was off.
+  // Snap every card to the pose the layout gives it (the run does the rest: it says
+  // if a finished run was off its slots, frees busy, and calls fxDone).
   function endFx() {
+    fxRun.end();
+  }
+  function fxSnap() {
     if (!fx) return;
-    const f = fx;
-    fx = null;
-    const err = f.sim.finish();
-    if (err > 1e-3 || !Number.isFinite(err)) console.error(`redeal animation ended ${err} cm from its slots`);
-    f.codes.forEach((c) => put(entries.get(c).mesh, poseOf(lay.poses[c])));
-    fxLight.intensity = 0;
-    fxRing.visible = false;
+    fx.codes.forEach((c) => {
+      const p = lay?.poses[c];
+      if (p) put(entries.get(c).mesh, poseOf(p));
+    });
+    if (fxLight) fxLight.intensity = 0;
+    if (fxRing) fxRing.visible = false;
     dirty = true;
-    hooks.busy?.(false);
+  }
+  function fxDone() {
+    fx = null;
     decorate();
     respread();
     kickoff();
   }
+  const fxRun = createFxRun({ busy: (on) => hooks.busy?.(on), write: writeFx, snap: fxSnap, done: fxDone, report: (e) => console.error(e) });
 
   function show(next, { instant = false, redeal = false } = {}) {
     endFx();
@@ -522,7 +527,12 @@ export function createTable(canvas, hooks = {}) {
   }
 
   // ---- drawing ------------------------------------------------------------
+  let faultNext = false; // tests: the next frame throws
   function frame(now) {
+    if (faultNext) {
+      faultNext = false;
+      throw new Error("injected fault in the frame");
+    }
     let busy = false;
     for (const e of entries.values()) {
       const a = e.anim;
@@ -552,7 +562,8 @@ export function createTable(canvas, hooks = {}) {
     if (fx) {
       const dt = fx.last === null ? 0 : Math.min((now - fx.last) / 1000, 0.05);
       fx.last = now;
-      if (fxManual || stepFx(dt)) busy = true;
+      if (fxManual) fxRun.watch();
+      if (fxManual ? fx : stepFx(dt)) busy = true;
     }
     if (dirty) {
       dirty = false;
@@ -565,9 +576,24 @@ export function createTable(canvas, hooks = {}) {
     if (looping) return;
     looping = true;
     const step = (now) => {
-      const busy = frame(now);
-      if (busy || dirty) requestAnimationFrame(step);
-      else looping = false;
+      // Whatever a frame does, the loop and the effect's busy flag recover: on a
+      // fault the effect is snapped to the true poses and the loop stops (the next
+      // kickoff starts it again).
+      let again = false;
+      try {
+        again = frame(now) || dirty;
+      } catch (e) {
+        console.error(e);
+        try {
+          fxRun.end({ fault: true });
+        } catch (e2) {
+          console.error(e2);
+        }
+        dirty = true;
+      } finally {
+        if (again) requestAnimationFrame(step);
+        else looping = false;
+      }
     };
     requestAnimationFrame(step);
   }
@@ -700,6 +726,9 @@ export function createTable(canvas, hooks = {}) {
       case "h": case "H":
         if (kb !== null && kb !== "home") emit({ fan: kb, home: false, card: topOfFan(kb), action: "home" });
         break;
+      case "d": case "D":
+        if (typeof kb === "number") emit({ fan: kb, home: false, card: topOfFan(kb), action: "cycle" });
+        break;
       case "Escape": emit({ fan: null, home: false, card: null, action: "clear" }); break;
       default: handled = false;
     }
@@ -735,6 +764,8 @@ export function createTable(canvas, hooks = {}) {
     },
     setMargins(m) {
       margins = { ...margins, ...m };
+      // Nothing to redo if the strips frame the table as the last layout did.
+      if (lay && usedMargins === marginsKey(wantMargins()) && Object.keys(m).length === 0) return;
       relayout();
       kickoff();
     },
@@ -768,6 +799,8 @@ export function createTable(canvas, hooks = {}) {
         return live;
       },
       active: () => !!fx,
+      // For tests: make the next drawn frame throw.
+      fault: () => (faultNext = true),
     },
     stage,
     layout: () => lay,
