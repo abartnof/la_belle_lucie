@@ -92,6 +92,9 @@ test("the outline is one closed polygon with the tip on the path", () => {
   // no repeated points (the polygon is simple enough to triangulate)
   const keys = new Set(fill.outline.map((q) => q.map((v) => v.toFixed(5)).join()));
   assert.equal(keys.size, fill.outline.length);
+  assert.equal(fill.params.length, fill.outline.length);
+  assert.ok(fill.params.every((v) => v >= 0 && v <= 0.6 + 1e-9));
+  assert.equal(Math.max(...fill.params), 0.6);
   // a smaller scale makes a smaller arrow
   const span = (o) => Math.max(...o.map((q) => q[0])) - Math.min(...o.map((q) => q[0]));
   assert.ok(span(arrowOutline(ends, 0.6, { scale: 0.5 }).outline) < span(fill.outline));

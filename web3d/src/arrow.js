@@ -88,19 +88,25 @@ export function arrowOutline(ends, t, { tail = 0.4, scale = 1, steps = 14 } = {}
   const t0 = Math.max(0, t - tail);
   const left = [];
   const right = [];
+  const along = []; // each shaft point's place on the path, for its height
   if (t1 - t0 > 1e-3) {
     for (let i = 0; i <= steps; i++) {
       const u = i / steps;
       const c = curveAt(from, to, t0 + (t1 - t0) * u);
       left.push(side(c, -c.dz, c.dx, shaft));
       right.push(side(c, -c.dz, c.dx, -shaft));
+      along.push(t0 + (t1 - t0) * u);
     }
   } else {
+    along.push(t1);
     left.push(side(base, -base.dz, base.dx, shaft));
     right.push(side(base, -base.dz, base.dx, -shaft));
   }
   const wingL = side(base, -tipAt.dz, tipAt.dx, headHalf);
   const wingR = side(base, -tipAt.dz, tipAt.dx, -headHalf);
   const outline = [...left, wingL, [tip.x, tip.z], wingR, ...right.reverse()];
-  return { tip, dir: { x: tipAt.dx, z: tipAt.dz }, outline };
+  // `params`: where on the path (0 to 1) each outline point lies, so the arrow can
+  // lie along the flight's arc, its tip lower than its tail as it comes down.
+  const params = [...along, t1, t, t1, ...[...along].reverse()];
+  return { tip, dir: { x: tipAt.dx, z: tipAt.dz }, outline, params };
 }

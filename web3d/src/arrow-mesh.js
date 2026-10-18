@@ -12,7 +12,7 @@ import { INK, RAMPS, inkMaterial } from "../../kit/js/materials.js";
 
 const MAX_POINTS = 40; // an outline never has more (arrow.js: 2 * (steps + 1) + 3)
 
-// -> { mesh, set(outline, y, height) , hide() }. `color` is the arrow's blue.
+// -> { mesh, set(outline, ys, height, ground), hide() }, `ys` the height of each outline point. `color` is the arrow's blue.
 export function createArrowMesh(stage, color) {
   const verts = MAX_POINTS * 4; // top cap, bottom cap, and two rings for the walls
   const geometry = new BufferGeometry();
@@ -50,9 +50,10 @@ export function createArrowMesh(stage, color) {
   shadow.raycast = () => {};
   stage.scene.add(shadow);
 
-  // `ground`: { y, opacity, dz } for the shadow below: dz (cm) shifts it towards the
-  // viewer, so it shows beneath the arrow, not hidden by it.
-  function set(outline, y, height, ground = { y: 0.4, opacity: 0.3 }) {
+  // `ground`: { y, opacity, dz } for the shadow below: dz (cm of shift per cm of
+  // height above `y`) moves it towards the viewer, so it shows beneath the arrow,
+  // not hidden by it.
+  function set(outline, ys, height, ground = { y: 0.4, opacity: 0.3, dz: 0 }) {
     const n = Math.min(outline.length, MAX_POINTS);
     let area = 0;
     for (let i = 0; i < n; i++) {
@@ -77,20 +78,18 @@ export function createArrowMesh(stage, color) {
       const l = Math.hypot(m[0], m[1]) || 1;
       out.push([m[0] / l, m[1] / l]);
     }
-    const top = y + height;
     // Vertices: [0, n) top cap, [n, 2n) bottom cap, [2n, 3n) wall top, [3n, 4n) wall bottom.
     for (let i = 0; i < n; i++) {
       const [x, z] = outline[i];
       const [ox, oz] = out[i];
-      const put = (k, py, nx, ny, nz) => {
+      const put = (k, py) => {
         position.setXYZ(k, x, py, z);
-        normal.setXYZ(k, nx, ny, nz);
         outlineNormal.setXYZ(k, ox, 0, oz);
       };
-      put(i, top, 0, 1, 0);
-      put(n + i, y, 0, -1, 0);
-      put(2 * n + i, top, ox, 0, oz);
-      put(3 * n + i, y, ox, 0, oz);
+      put(i, ys[i] + height);
+      put(n + i, ys[i]);
+      put(2 * n + i, ys[i] + height);
+      put(3 * n + i, ys[i]);
     }
     // Triangles, each turned to face the way `want` points.
     let k = 0;
@@ -113,11 +112,14 @@ export function createArrowMesh(stage, color) {
       tri(2 * n + i, 3 * n + i, 2 * n + j, wx, 0, wz);
       tri(2 * n + j, 3 * n + i, 3 * n + j, wx, 0, wz);
     }
-    for (const a of [position, normal, outlineNormal, index]) a.needsUpdate = true;
+    for (const a of [position, outlineNormal, index]) a.needsUpdate = true;
     geometry.setDrawRange(0, k);
+    // The arrow is tilted along its flight, so the light needs the true normals.
+    index.array.fill(0, k); // stale triangles must not skew the normals
+    geometry.computeVertexNormals();
     mesh.visible = true;
 
-    for (let i = 0; i < n; i++) shadowPos.setXYZ(i, outline[i][0], ground.y, outline[i][1] + (ground.dz ?? 0));
+    for (let i = 0; i < n; i++) shadowPos.setXYZ(i, outline[i][0], ground.y, outline[i][1] + ground.dz * (ys[i] - ground.y));
     const gi = shadowGeo.index;
     let g = 0;
     for (const [a, b, c] of cap) gi.setX(g++, a), gi.setX(g++, b), gi.setX(g++, c);

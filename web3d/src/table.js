@@ -206,11 +206,15 @@ export function createTable(canvas, hooks = {}) {
     if (alpha < 0.03) {
       arrowSolid.hide();
     } else {
-      const { outline } = arrowOutline(arrow.ends, t, { tail: still ? 1 : 0.4, scale: alpha });
-      // It hops: up from the card it leaves, down onto the middle of the one it lands on.
-      const y = ARROW_LAND + (ARROW_Y - ARROW_LAND) * 4 * t * (1 - t) - (1 - alpha) * 0.6;
-      // Its shadow lies on the surface below it, further towards the viewer and fainter the higher it flies.
-      arrowSolid.set(outline, y, ARROW_THICK * alpha, { y: 0.4, dz: 1.1 * (y - ARROW_LAND), opacity: 0.4 * alpha * (1 - 0.45 * ((y - ARROW_LAND) / (ARROW_Y - ARROW_LAND))) });
+      const { outline, params } = arrowOutline(arrow.ends, t, { tail: still ? 1 : 0.4, scale: alpha });
+      // Every point of it follows the flight's arc: up from the card it leaves, down onto
+      // the middle of the one it lands on, so near the end its tip is lower than its tail.
+      const { from, to } = arrow.ends;
+      const peak = Math.min(ARROW_Y, ARROW_LAND + 0.3 * Math.hypot(to.x - from.x, to.z - from.z)); // a short hop is a low one
+      const arc = (s) => ARROW_LAND + (peak - ARROW_LAND) * 4 * s * (1 - s);
+      const ys = params.map((s) => arc(s) - (1 - alpha) * 0.6);
+      // Its shadow lies on the surface below it, further towards the viewer and fainter the higher it is.
+      arrowSolid.set(outline, ys, ARROW_THICK * alpha, { y: 0.4, dz: 0.5, opacity: 0.4 * alpha });
     }
     dirty = true;
     return !still;
