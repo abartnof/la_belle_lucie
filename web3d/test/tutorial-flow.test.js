@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { parseTutorial } from "../../kit/js/tutorial.js";
-import { duePage, PAGE_KEYS } from "../src/tutorial-flow.js";
+import { duePage, pageNote, PAGE_KEYS } from "../src/tutorial-flow.js";
 
 const base = { prompt: "play", moves: 0, legal: ["f1>f2"], draw: "off", fans: [["AS"]], redeals_left: 2 };
 const st = (o) => ({ ...base, ...o });
@@ -64,4 +64,14 @@ test("pages already seen never come back; a finished game asks for none", () => 
 
 test("a game resumed past its start does not replay the opening pages", () => {
   assert.equal(duePage(null, st({ moves: 12 }), new Set(), {}), null);
+});
+
+test("the foundations page adds a note only in Trefoil: aces already home, 16 fans", () => {
+  assert.equal(pageNote("foundations", {}), null);
+  assert.equal(pageNote("foundations", { trefoil: false }), null);
+  assert.equal(pageNote("table", { trefoil: true }), null);
+  const note = pageNote("foundations", { trefoil: true });
+  assert.match(note, /aces/i);
+  assert.match(note, /16 fans/);
+  assert.ok(note.split(/\s+/).length < 30);
 });

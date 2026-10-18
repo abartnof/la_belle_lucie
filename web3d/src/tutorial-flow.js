@@ -20,3 +20,9 @@ export function duePage(prevState, state, seen, options = {}) {
   if (due("king") && options.king && state.fans?.some((f) => f.length === 0)) return "king";
   return null;
 }
+
+// Extra words for a page, only in games whose options call for them (else null).
+export function pageNote(key, options = {}) {
+  if (key === "foundations" && options.trefoil) return "In this game the four aces are already home, and there are 16 fans.";
+  return null;
+}

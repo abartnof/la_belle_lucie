@@ -15,6 +15,7 @@ not blank; a screenshot of each size is kept in --shots), that clicking plays (a
 move from the state, made by clicking its card and then its target, changes the state),
 and that the keyboard reaches the table (arrow keys speak into the live region).
 The software-rendered WebGL of the VM is slow: the waits are long on purpose.
+The overlay has its own test: `~/piquet/.venv/bin/python web3d/test/ui.browser.py`.
 Not part of bin/gate (the gate opens no browser); run it before committing a change to
 the page.
 """

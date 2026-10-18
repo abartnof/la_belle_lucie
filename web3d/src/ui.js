@@ -11,7 +11,7 @@ import { parseTutorial } from "../../kit/js/tutorial.js";
 import TUTORIAL from "../tutorial.md";
 import { hintText } from "./hints.js";
 import { loadPrefs, savePrefs, defaultStore, decodeRules, encodeRules, stepRedeals, PRESETS, OPTIONS, presetOf, parseSeed, FACES } from "./prefs.js";
-import { duePage, PAGE_KEYS } from "./tutorial-flow.js";
+import { duePage, pageNote, PAGE_KEYS } from "./tutorial-flow.js";
 
 const DRAW_WORDS = { later: "on the last deal", ready: "ready", used: "used" };
 
@@ -144,11 +144,12 @@ export function createUi(root, hooks) {
         if (b.type === "p") return el("p", {}, ...spansToNodes(b.spans, showPage));
         return el(b.type, {}, ...b.items.map((it) => el("li", {}, ...spansToNodes(it, showPage))));
       }),
+      pageNote(key, state?.options) ? el("p", {}, pageNote(key, state?.options)) : null,
       el(
         "div",
         { class: "lbl-row" },
         button(fromHelp ? "Close" : "Got it", () => tut.close(), "", { "data-first": true }),
-        fromHelp ? null : button("Skip the tutorial", () => { PAGE_KEYS.forEach((k) => seen.add(k)); tut.close(); }, "lbl-quiet"),
+        fromHelp ? null : button("Skip the tutorial", () => { PAGE_KEYS.forEach((k) => seen.add(k)); persist(); tut.close(); }, "lbl-quiet"),
       ),
     );
     seen.add(key);
