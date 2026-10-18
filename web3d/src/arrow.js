@@ -72,8 +72,7 @@ export function phase(ms) {
 
 // The arrow as one closed outline ([x, z] points, a single polygon: the shaft
 // and the head are one piece, so nothing can gap between them). The head's tip
-// is at t along the path; behind it a shaft that swells from a point to full
-// width, `tail` of the path long. `scale` shrinks it all about its tip.
+// is at t along the path; behind it a shaft of even width, `tail` of the path long. `scale` shrinks it all about its tip.
 export function arrowOutline(ends, t, { tail = 0.4, scale = 1, steps = 14 } = {}) {
   const { from, to } = ends;
   const headLen = 3.6 * scale;
@@ -93,9 +92,8 @@ export function arrowOutline(ends, t, { tail = 0.4, scale = 1, steps = 14 } = {}
     for (let i = 0; i <= steps; i++) {
       const u = i / steps;
       const c = curveAt(from, to, t0 + (t1 - t0) * u);
-      const w = shaft * (0.15 + 0.85 * Math.min(1, u * 2.5));
-      left.push(side(c, -c.dz, c.dx, w));
-      right.push(side(c, -c.dz, c.dx, -w));
+      left.push(side(c, -c.dz, c.dx, shaft));
+      right.push(side(c, -c.dz, c.dx, -shaft));
     }
   } else {
     left.push(side(base, -base.dz, base.dx, shaft));

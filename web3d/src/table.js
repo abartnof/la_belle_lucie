@@ -193,7 +193,8 @@ export function createTable(canvas, hooks = {}) {
   // A solid arrow floating above the cards: toon shaded and inked like them, and
   // casting a shadow on the cards and the table. Never hit by a click (the
   // picker only tests cards). It grows in, flies, rests and shrinks away.
-  const ARROW_Y = LIFT + 2.2;
+  const ARROW_Y = LIFT + 2.2; // its height at the top of the hop
+  const ARROW_LAND = 0.9; // and resting on a card, so the tip points at the card's exact middle
   const ARROW_THICK = 0.7;
   const arrowSolid = createArrowMesh(stage, BLUE);
   let arrow = null; // { ends, start } while a hint with a move shows
@@ -206,8 +207,9 @@ export function createTable(canvas, hooks = {}) {
       arrowSolid.hide();
     } else {
       const { outline } = arrowOutline(arrow.ends, t, { tail: still ? 1 : 0.4, scale: alpha });
-      // It also settles down onto its height as it grows.
-      arrowSolid.set(outline, ARROW_Y - (1 - alpha) * 1.5, ARROW_THICK * alpha);
+      // It hops: up from the card it leaves, down onto the middle of the one it lands on.
+      const y = ARROW_LAND + (ARROW_Y - ARROW_LAND) * 4 * t * (1 - t) - (1 - alpha) * 0.6;
+      arrowSolid.set(outline, y, ARROW_THICK * alpha);
     }
     dirty = true;
     return !still;
