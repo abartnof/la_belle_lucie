@@ -1,0 +1,6 @@
+{
+  "name": "kit",
+  "private": true,
+  "type": "module",
+  "description": "Vendored from the card toolkit; see STAMP. Only marks the .js files as ES modules."
+}

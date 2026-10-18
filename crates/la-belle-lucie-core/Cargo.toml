@@ -1,0 +1,10 @@
+[package]
+name = "la-belle-lucie-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The rules of La Belle Lucie. Holds the rules; clients hold none."
+
+[dependencies]
+cardkit-rng = { path = "../cardkit-rng" }

@@ -1,0 +1,24 @@
+# Downloaded sources (OCR of books, web pages; some under copyright): kept locally so the
+# research notes' quotes can be re-checked; every note lists each source's URL.
+research/sources/
+
+# Rust build output
+target/
+
+# The table's libraries: pinned by web3d/package-lock.json, restored by `npm ci`
+node_modules/
+# Also a symlink of that name (bin/gate makes kit/node_modules)
+node_modules
+
+# Python caches
+__pycache__/
+*.py[cod]
+.venv/
+
+# Editor and OS clutter
+*.swp
+*~
+.DS_Store
+
+# Claude Code worktrees and local state
+.claude/

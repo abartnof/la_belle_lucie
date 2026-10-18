@@ -1,0 +1,16 @@
+{
+  "name": "la_belle_lucie3d",
+  "private": true,
+  "description": "The table for La Belle Lucie. The kit (../kit/js) imports `three` from here.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test ../kit/test/ test/"
+  },
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}

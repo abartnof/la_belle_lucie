@@ -1,0 +1,4 @@
+source: card_toolkit (~/card_toolkit, branch main)
+commit: c12c5c2
+copied: kit/ = js/, css/, test/, build.py; crates/cardkit-rng = crates/cardkit-rng
+Nothing here is synced back; to take a later toolkit change, copy it in by hand and update this commit.

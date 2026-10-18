@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = ["crates/cardkit-rng", "crates/la-belle-lucie-core", "crates/la-belle-lucie-cli", "crates/la-belle-lucie-wasm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.98"
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+# The statistical tests shuffle tens of thousands of times; at opt-level 0 they
+# would crawl. Debug assertions and overflow checks stay on.
+[profile.test]
+opt-level = 2

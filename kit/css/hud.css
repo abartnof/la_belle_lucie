@@ -1,0 +1,422 @@
+/* From cassino web3d/src/style.css @ 73f0cd7 (the score HUD), without `.info`,
+   the page's fixed slot for it (the game's layout: it gives .hud its width and
+   its place and stacks it above the controls). */
+/* ---- the score HUD ------------------------------------------------------------
+   The designer's handoff (docs/TABLE3D.md section 8), as approved: a dark
+   card of neutral greys, the system font, tabular numerals, and three
+   springs sampled for CSS linear(): fast spatial (damping 0.6, stiffness
+   800), default spatial (0.75, 380) and effects (1.0, 1600). */
+.hud,
+.hud-card {
+  --sp-fast: linear(0, 0.048, 0.167, 0.323, 0.488, 0.646, 0.784, 0.896, 0.98, 1.038, 1.074, 1.091, 1.095, 1.088, 1.076, 1.061, 1.045, 1.03, 1.018, 1.008, 1, 0.995, 0.992, 0.991, 0.991, 0.992, 0.993, 0.995, 0.996, 0.997, 0.999, 0.999, 1, 1.001, 1.001, 1.001, 1.001, 1.001, 1.001, 1);
+  --sp-def: linear(0, 0.03, 0.104, 0.204, 0.316, 0.43, 0.538, 0.638, 0.725, 0.8, 0.861, 0.911, 0.949, 0.978, 0.999, 1.013, 1.022, 1.027, 1.028, 1.028, 1.026, 1.023, 1.02, 1.017, 1.014, 1.011, 1.008, 1.006, 1.004, 1.003, 1.002, 1.001, 1, 1, 0.999, 0.999, 0.999, 0.999, 0.999, 1);
+  --sp-fx: linear(0, 0.018, 0.064, 0.127, 0.199, 0.274, 0.348, 0.42, 0.488, 0.551, 0.608, 0.659, 0.705, 0.745, 0.781, 0.812, 0.839, 0.863, 0.883, 0.901, 0.916, 0.929, 0.94, 0.949, 0.957, 0.964, 0.969, 0.974, 0.978, 0.982, 0.985, 0.987, 0.989, 0.991, 0.993, 0.994, 0.995, 0.996, 0.996, 1);
+  box-sizing: border-box;
+  padding: 20px 20px 16px;
+  border-radius: 28px;
+  background: #1b1f24;
+  color: #f2f4f6;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  pointer-events: auto;
+}
+/* A row a player, your opponent's first: the name, the line of 21
+   segments in groups of five (the finish wider), and the score at its end;
+   the ledger's chevron at the right, across both rows. */
+.hud-top {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+.hud-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hud-side {
+  display: grid;
+  grid-template-columns: 2.6em 1fr;
+  align-items: center;
+  gap: 8px;
+}
+.hud-line {
+  flex: 1;
+  min-width: 0; /* a grid item: without it the line keeps its margins' width and squeezes the score */
+  display: flex;
+  align-items: center;
+  height: 22px;
+  --dark: #2f363d;
+}
+.hud-line.you {
+  --fill: #8b95a0;
+  --cur: #f7f8fa;
+  --peak: #ffffff;
+}
+.hud-line.opp {
+  --fill: #646d77;
+  --cur: #c3cad2;
+  --peak: #e4e8ec;
+}
+.seg {
+  box-sizing: border-box;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 4px;
+  border-radius: 6px;
+  background-color: var(--dark);
+  transition: height 460ms var(--sp-fast), background-color 200ms var(--sp-fx);
+}
+/* A game with many segments sets --seg-gap / --seg-gap-group on .hud. */
+.seg + .seg {
+  margin-left: var(--seg-gap, 3px);
+}
+.seg.grp {
+  margin-left: var(--seg-gap-group, 8px);
+}
+.seg.reached {
+  height: 6px;
+  background-color: var(--fill);
+}
+.seg.cursor {
+  height: 12px;
+  background-color: var(--cur);
+}
+/* Scoring lights the next segments in a wave: each flares and settles. */
+.seg.lighting {
+  transition: none;
+  animation: seg-light 760ms ease-out backwards;
+}
+@keyframes seg-light {
+  0% {
+    height: 4px;
+    background-color: var(--dark);
+  }
+  38% {
+    height: 20px;
+    background-color: var(--peak);
+    animation-timing-function: var(--sp-fast);
+  }
+}
+/* The score at the end of its row; the popup rolls in over the row. */
+.hud-block {
+  position: relative;
+  height: 40px;
+  overflow: hidden;
+}
+.hud-score {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  transition: transform 460ms var(--sp-fast) 120ms, opacity 140ms var(--sp-fx) 120ms;
+}
+.hud-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #9aa3ad;
+}
+/* Two digits wide in its own font, whichever font the device has (a score
+   past 9 was cut off where the column was measured in the row's font). */
+.hud-num {
+  min-width: 2ch;
+  font-size: 30px;
+  line-height: 40px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #f7f8fa;
+  text-align: right;
+  transform-origin: right center;
+}
+.hud-num.pop {
+  animation: hud-num-pop 640ms ease-out 1;
+}
+@keyframes hud-num-pop {
+  28% {
+    transform: scale(1.3);
+    animation-timing-function: var(--sp-fast);
+  }
+}
+.hud-pop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  opacity: 0;
+  transform: translateY(44px);
+  transition: transform 240ms var(--sp-fx), opacity 120ms var(--sp-fx) 100ms;
+}
+.hud-pop-label {
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 700;
+  color: #f7f8fa;
+  text-align: right;
+}
+.hud-pop-pts {
+  flex: none;
+  font-size: 30px;
+  line-height: 40px;
+  font-weight: 700;
+  color: #f7f8fa;
+  font-variant-numeric: tabular-nums;
+}
+.hud-block.popped .hud-score {
+  opacity: 0;
+  transform: translateY(-44px);
+  transition: transform 260ms var(--sp-fx), opacity 120ms var(--sp-fx) 100ms;
+}
+.hud-block.popped .hud-pop {
+  opacity: 1;
+  transform: translateY(0);
+  transition: transform 460ms var(--sp-fast) 80ms, opacity 120ms var(--sp-fx) 80ms;
+}
+/* The chevron: a circle that morphs to a rounded square as it opens. */
+.hud-chev {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: #2b3138;
+  color: #f2f4f6;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-radius 520ms var(--sp-def), background-color 200ms var(--sp-fx), color 200ms var(--sp-fx), transform 150ms var(--sp-fx);
+}
+:is(.hud, .hud-card).open .hud-chev {
+  border-radius: 15px;
+  background: #e8ebef;
+  color: #121417;
+}
+.hud-chev:active {
+  transform: scale(0.88);
+}
+.hud-chev:focus-visible {
+  outline: 2px solid #f7f8fa;
+  outline-offset: 3px;
+}
+.hud-chev svg {
+  display: block;
+  transition: transform 460ms var(--sp-fast);
+}
+:is(.hud, .hud-card).open .hud-chev svg {
+  transform: rotate(180deg);
+}
+/* The ledger: every hand's lines and subtotal, and the total. */
+.hud-panel {
+  height: 0;
+  overflow: hidden;
+  transition: height 240ms var(--sp-fx);
+}
+.hud.open .hud-panel {
+  transition: height 520ms var(--sp-def);
+}
+.hud-panel-inner {
+  padding: 6px 0 8px;
+}
+.hud-rule {
+  height: 2px;
+  border-radius: 1px;
+  background: #2a3037;
+}
+.hud-mid {
+  flex: none;
+  width: 128px;
+  text-align: center;
+}
+.hud-head {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #9aa3ad;
+}
+.hud-head-you,
+.hud-head-opp {
+  flex: 1 1 0;
+}
+.hud-head-you {
+  padding-left: 4px;
+}
+.hud-head-opp {
+  padding-right: 4px;
+  text-align: right;
+}
+.hud-list {
+  overflow-y: auto;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
+  transition: height 520ms var(--sp-def);
+}
+.hud-list::-webkit-scrollbar {
+  display: none;
+}
+.hud-hand {
+  opacity: 0;
+  transform: translateY(14px) scale(0.96);
+  transition: opacity 120ms var(--sp-fx), transform 160ms var(--sp-fx);
+}
+.hud.open .hud-hand {
+  opacity: 1;
+  transform: none;
+  transition: opacity 200ms var(--sp-fx) var(--d), transform 460ms var(--sp-fast) var(--d);
+}
+.hud-ln {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 100ms var(--sp-fx), transform 140ms var(--sp-fx);
+}
+.hud.open .hud-ln {
+  opacity: 1;
+  transform: none;
+  transition: opacity 180ms var(--sp-fx) var(--d), transform 420ms var(--sp-fast) var(--d);
+}
+.hud-ln .hud-mid {
+  font-size: 12px;
+  color: #9aa3ad;
+}
+.hud-v {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #f7f8fa;
+}
+.hud-v.you {
+  padding-left: 4px;
+  transform-origin: left center;
+}
+.hud-v.opp {
+  padding-right: 4px;
+  text-align: right;
+  transform-origin: right center;
+}
+.hud-v.none {
+  color: #6b747e;
+}
+.hud-v.flash {
+  animation: hud-val 640ms ease-out 1;
+}
+@keyframes hud-val {
+  30% {
+    transform: scale(1.45);
+    animation-timing-function: var(--sp-fast);
+  }
+}
+.hud-sub {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  box-shadow: inset 0 1px 0 #2a3037;
+}
+.hud-sv {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #9aa3ad;
+}
+.hud-sv:first-child {
+  padding-left: 4px;
+}
+.hud-sv:last-child {
+  padding-right: 4px;
+  text-align: right;
+}
+.hud-sv.lead {
+  color: #f7f8fa;
+}
+.hud-sub .hud-mid {
+  font-size: 13px;
+  color: #9aa3ad;
+}
+.hud-hand.live .hud-sub .hud-mid {
+  color: #f2f4f6;
+}
+.hud-gap {
+  height: 8px;
+}
+.hud-total {
+  display: flex;
+  align-items: center;
+  height: 44px;
+}
+.hud-tot-you,
+.hud-tot-opp {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #9aa3ad;
+}
+.hud-tot-you {
+  padding-left: 4px;
+}
+.hud-tot-opp {
+  padding-right: 4px;
+  text-align: right;
+}
+.hud-total .lead {
+  color: #f7f8fa;
+}
+.hud-total .hud-mid {
+  font-size: 13px;
+  color: #f2f4f6;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud,
+  .hud * {
+    animation-duration: 1ms !important;
+    animation-delay: 0s !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0s !important;
+  }
+}
+/* A mark after a name ("(D)"), with its tooltip from data-tip: one styled bubble, on hover and on focus
+   (a tap focuses it). Added to cassino's sheet with hud.mark. */
+.hud-mark {
+  position: relative;
+  white-space: nowrap;
+  cursor: help;
+  margin-left: 2px;
+  color: #f7f8fa;
+  border-radius: 3px;
+}
+.hud-mark:focus-visible {
+  outline: 2px solid #f7f8fa;
+  outline-offset: 1px;
+}
+.hud-mark:hover::after,
+.hud-mark:focus::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 5;
+  width: 15em;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px solid #5b6472;
+  border-radius: 6px;
+  background: #1d2433;
+  color: #fff;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: normal;
+  pointer-events: none;
+}

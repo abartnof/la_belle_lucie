@@ -1,0 +1,14 @@
+[package]
+name = "la-belle-lucie-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "La Belle Lucie in a terminal."
+
+[[bin]]
+name = "la-belle-lucie"
+path = "src/main.rs"
+
+[dependencies]
+la-belle-lucie-core = { path = "../la-belle-lucie-core" }

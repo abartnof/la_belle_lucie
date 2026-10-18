@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# The gate before every commit: formatting, lints, tests, and a current page.
+# Prints one summary line and exits non-zero on any failure. Run it bare
+# (`bin/gate || exit 1`); a pipe would hide its status.
+# From the toolkit's template/bin/gate (adapted from cassino's and bezique's).
+set -u
+cd "$(dirname "$0")/.."
+parts=()
+
+fail() {
+  echo "gate: FAILED: $1" >&2
+  exit 1
+}
+
+# ---- Rust --------------------------------------------------------------
+# shellcheck disable=SC1091
+[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
+command -v cargo >/dev/null || fail "cargo is not installed"
+cargo fmt --all -- --check >/dev/null 2>&1 || fail "cargo fmt (run cargo fmt --all)"
+if ! out=$(cargo clippy --all-targets --quiet -- -D warnings 2>&1); then
+  echo "$out" | head -40 >&2
+  fail "clippy"
+fi
+if ! out=$(cargo test --quiet 2>&1); then
+  echo "$out" | grep -E "FAILED|panicked|error" | head -40 >&2
+  fail "cargo test"
+fi
+rust_passed=$(echo "$out" | grep -oE "test result: ok\. [0-9]+ passed" | awk '{s += $4} END {print s + 0}')
+[ "${rust_passed:-0}" -gt 0 ] || fail "cargo test ran no tests (its output was not recognised)"
+parts+=("$rust_passed in Rust")
+
+# ---- The engine as WebAssembly, for the Node tests ----------------------
+cargo build --release --quiet --target wasm32-unknown-unknown -p la-belle-lucie-wasm >/dev/null 2>&1 || fail "wasm build"
+
+# ---- Node: the kit's tests and the game's ------------------------------
+[ -d web3d/node_modules/three ] || fail "web3d/node_modules is missing: run npm ci in web3d/"
+[ -e kit/node_modules ] || [ -L kit/node_modules ] || ln -s ../web3d/node_modules kit/node_modules
+[ -e kit/node_modules/three ] || fail "kit/node_modules does not lead to web3d/node_modules"
+if ! node_out=$(cd web3d && node --test ../kit/test/ test/ 2>&1); then
+  echo "$node_out" | grep -E "^not ok|^\s+not ok|Error|expected|actual" | head -40 >&2
+  fail "node tests"
+fi
+node_passed=$(echo "$node_out" | grep -oE "^# pass [0-9]+" | awk '{print $3}')
+node_skipped=$(echo "$node_out" | grep -oE "^# skipped [0-9]+" | awk '{print $3}')
+[ "${node_passed:-0}" -gt 0 ] || fail "node ran no tests"
+[ "${node_skipped:-0}" -eq 0 ] || fail "node skipped $node_skipped test(s)"
+parts+=("$node_passed in Node")
+
+# ---- Python: the kit's build.py ----------------------------------------
+if ! py_out=$(python3 -m unittest discover -s kit/test -p 'test_*.py' 2>&1); then
+  echo "$py_out" | tail -30 >&2
+  fail "python tests (kit/build.py)"
+fi
+parts+=("$(echo "$py_out" | grep -oE "^Ran [0-9]+" | awk '{print $2}') in Python")
+
+# ---- The page is current -----------------------------------------------
+if ! build_out=$(python3 kit/build.py --check 2>&1); then
+  echo "$build_out" | tail -20 >&2
+  fail "kit/build.py --check (the committed page is stale: run python3 kit/build.py)"
+fi
+parts+=("page current")
+
+( IFS=,; echo "gate: ok (${parts[*]/#/ })" )

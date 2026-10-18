@@ -1,0 +1,6 @@
+body { margin: 0; font-family: system-ui, sans-serif; background: #1d4d36; color: #f4efe2; }
+main { max-width: 36rem; margin: 0 auto; padding: 1rem; }
+button { font: inherit; padding: 0.5rem 1rem; margin-right: 0.5rem; }
+.hand { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 1rem 0; min-height: 3rem; }
+.card { background: #fffdf6; color: #222; border-radius: 0.3rem; padding: 0.6rem 0.5rem; font-weight: bold; }
+.card.red { color: #b3202a; }

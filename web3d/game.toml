@@ -1,0 +1,9 @@
+name = "la_belle_lucie"
+entry = "src/main.js"
+template = "src/index.html"
+style = "src/style.css"
+kit_styles = []
+output = "la-belle-lucie.html"
+crate = "la-belle-lucie-wasm"
+# 5 MB is a guideline for modesty, not a hard limit: over it, the build warns.
+guideline_bytes = 5242880

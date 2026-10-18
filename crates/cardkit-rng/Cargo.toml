@@ -1,0 +1,9 @@
+[package]
+name = "cardkit-rng"
+description = "Seeded xoshiro256** with named streams, shared by the card games"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
