@@ -70,6 +70,9 @@ pub struct Game {
     pub(crate) draw_used: bool,
     /// Every command applied, in order: with the seed and rules, the whole game.
     record: Vec<Command>,
+    /// The table a layout game began from (None for a seeded deal), so undo
+    /// can replay the record onto it.
+    start: Option<Table>,
     /// The rest of the line the hint search found for this deal, so that
     /// following the hints does not search again; any other play drops it.
     pub(crate) plan: RefCell<Vec<Command>>,
@@ -100,20 +103,23 @@ impl Game {
             redeals_left: rules.redeals,
             draw_used: false,
             record: Vec::new(),
+            start: None,
             plan: RefCell::default(),
         }
     }
 
-    /// A game from an explicit layout, for tests. Its record cannot be replayed.
-    #[cfg(test)]
-    pub(crate) fn from_layout(rules: Rules, fans: Vec<Vec<Card>>, home: [u8; 4]) -> Game {
+    /// A game from an explicit layout (seed 0, the rules' redeals): a lesson
+    /// or a test. Undo replays the record onto this layout.
+    pub fn from_layout(rules: Rules, fans: Vec<Vec<Card>>, home: [u8; 4]) -> Game {
+        let table = Table { fans, home };
         Game {
             seed: 0,
             rules,
-            table: Table { fans, home },
+            table: table.clone(),
             redeals_left: rules.redeals,
             draw_used: false,
             record: Vec::new(),
+            start: Some(table),
             plan: RefCell::default(),
         }
     }
@@ -233,7 +239,15 @@ impl Game {
     /// Takes back the last command by replaying the record without it.
     pub fn undo(&mut self) -> Result<(), Illegal> {
         let (_, rest) = self.record.split_last().ok_or(Illegal::NothingToUndo)?;
-        *self = Game::replay(self.seed, self.rules, rest)?;
+        let mut game = match &self.start {
+            Some(t) => Game::from_layout(self.rules, t.fans.clone(), t.home),
+            None => Game::new(self.seed, self.rules),
+        };
+        game.seed = self.seed;
+        for &command in rest {
+            game.apply(command)?;
+        }
+        *self = game;
         Ok(())
     }
 
@@ -260,6 +274,49 @@ impl Game {
             Command::Redeal => None,
         }
     }
+}
+
+/// Longest layout text accepted, and most fans.
+const MAX_LAYOUT: usize = 2000;
+const MAX_FANS: usize = 30;
+
+/// Reads a layout, `"<fans> ; <home>"`: fans separated by "/", cards as codes
+/// bottom to top, an empty fan "-", home as four counts in suit order S H D C
+/// (`"6H 9C / KS 7H / - ; 0 0 0 0"`). Refuses a card twice, a card already
+/// home, a count over 13, more than 30 fans, or anything unreadable.
+pub fn parse_layout(text: &str) -> Result<(Vec<Vec<Card>>, [u8; 4]), String> {
+    if text.len() > MAX_LAYOUT {
+        return Err("layout too long".into());
+    }
+    let (fan_text, home_text) = text.split_once(';').ok_or("missing ';'")?;
+    let counts: Vec<u8> = home_text
+        .split_whitespace()
+        .map(|n| n.parse::<u8>().map_err(|_| format!("bad home count {n:?}")))
+        .collect::<Result<_, _>>()?;
+    let home: [u8; 4] = counts.try_into().map_err(|_| "home needs four counts")?;
+    if home.iter().any(|&n| n > 13) {
+        return Err("home count over 13".into());
+    }
+    let mut seen = [false; Card::COUNT];
+    let mut fans = Vec::new();
+    for fan in fan_text.split('/') {
+        let mut cards = Vec::new();
+        for code in fan.split_whitespace().filter(|c| *c != "-") {
+            let card = Card::parse(code).ok_or_else(|| format!("bad card {code:?}"))?;
+            if card.rank() <= home[card.suit() as usize] {
+                return Err(format!("{code} is already home"));
+            }
+            if std::mem::replace(&mut seen[card.index()], true) {
+                return Err(format!("{code} appears twice"));
+            }
+            cards.push(card);
+        }
+        fans.push(cards);
+    }
+    if fans.len() > MAX_FANS {
+        return Err("too many fans".into());
+    }
+    Ok((fans, home))
 }
 
 #[cfg(test)]
@@ -699,5 +756,69 @@ mod tests {
             assert_eq!(a.record(), b.record());
             assert_eq!(a.fans(), b.fans());
         }
+    }
+
+    #[test]
+    fn layouts_parse_and_bad_ones_are_refused() {
+        let (fans, home) = parse_layout("6H 9C / KS 7H / - ; 0 0 0 0").unwrap();
+        assert_eq!(fans.len(), 3);
+        assert_eq!(fans[0][1], card("9C"));
+        assert!(fans[2].is_empty());
+        assert_eq!(home, [0; 4]);
+        let (fans, home) = parse_layout("KC ; 13 13 13 12").unwrap();
+        assert_eq!((fans.len(), home), (1, [13, 13, 13, 12]));
+        for bad in [
+            "6H 6H ; 0 0 0 0",
+            "6H / 6H ; 0 0 0 0",
+            "2S ; 2 0 0 0",
+            "2S ; 3 0 0 0",
+            "KC ; 13 13 13 13 0",
+            "KC ; 14 0 0 0",
+            "KC ; 0 0 0",
+            "KC ; 0 0 0 x",
+            "KC",
+            "ZZ ; 0 0 0 0",
+            "10H ; 0 0 0 0",
+            "",
+        ] {
+            assert!(parse_layout(bad).is_err(), "{bad:?}");
+        }
+        let many = format!("{} ; 0 0 0 0", vec!["-"; 31].join("/"));
+        assert!(parse_layout(&many).is_err());
+        let long = format!("{} ; 0 0 0 0", "-/".repeat(2000));
+        assert!(parse_layout(&long).is_err());
+    }
+
+    #[test]
+    fn a_near_won_layout_wins() {
+        let (fans, home) = parse_layout("KC ; 13 13 13 12").unwrap();
+        let mut g = Game::from_layout(Rules::from_code(4), fans, home);
+        assert!(!g.won());
+        g.apply(mv(0, Home)).unwrap();
+        assert!(g.won());
+    }
+
+    #[test]
+    fn undo_on_a_layout_game_returns_to_the_layout() {
+        let (fans, home) = parse_layout("6H 9C / KS 7H / 3D TC ; 0 0 0 0").unwrap();
+        let mut g = Game::from_layout(Rules::from_code(4), fans.clone(), home);
+        g.apply(mv(0, Fan(2))).unwrap();
+        g.apply(mv(0, Fan(1))).unwrap();
+        g.undo().unwrap();
+        assert_eq!(g.record().len(), 1);
+        g.undo().unwrap();
+        assert_eq!(g.fans(), &fans[..]);
+        assert_eq!(g.home(), home);
+        assert_eq!(g.undo(), Err(Illegal::NothingToUndo));
+        let mut g = Game::from_layout(
+            Rules::from_code(4),
+            parse_layout("2S 9H / 5C KD / 7D 3H ; 0 0 0 0").unwrap().0,
+            [0; 4],
+        );
+        g.apply(Command::Redeal).unwrap();
+        assert_eq!(g.redeals_left(), 1);
+        g.undo().unwrap();
+        assert_eq!(g.redeals_left(), 2);
+        assert_eq!(g.fans().len(), 3);
     }
 }

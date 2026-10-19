@@ -14,7 +14,7 @@ pub mod table;
 
 pub use cards::{Card, Suit};
 pub use command::{Command, Dest};
-pub use game::{DrawState, Game, Illegal};
+pub use game::{parse_layout, DrawState, Game, Illegal};
 pub use hint::{classify, Alt, Hint, Rule};
 pub use rules::{preset, Rules};
 

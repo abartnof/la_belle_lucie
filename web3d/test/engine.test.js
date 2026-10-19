@@ -60,3 +60,18 @@ test("a command the engine refuses is not ok and changes nothing", { skip }, asy
     assert.deepEqual(state, before);
   }
 });
+
+test("a lesson starts a layout game, plays, wins; a refused layout answers null", { skip }, async () => {
+  const engine = await load();
+  const before = engine.new({ seed: 5, rules: 4 });
+  assert.equal(engine.lesson({ layout: "6H 6H ; 0 0 0 0" }), null);
+  assert.deepEqual(engine.state(), before);
+  const s = engine.lesson({ layout: "6H 9C / KS 7H / 3D TC ; 0 0 0 0" });
+  assert.equal(s.seed, 0);
+  assert.deepEqual(s.legal, ["f0>f2"]);
+  assert.equal(engine.send("f0>f2").ok, true);
+  assert.equal(engine.send("undo").state.moves, 0);
+  const won = engine.lesson({ layout: "KC ; 13 13 13 12", rules: 4 });
+  assert.deepEqual(won.legal, ["f0>h"]);
+  assert.equal(engine.send("f0>h").state.prompt, "won");
+});

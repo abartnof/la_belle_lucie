@@ -6,7 +6,7 @@
 //! [`Session`] is the protocol with no WebAssembly in it, so it is tested
 //! natively; [`ffi`] wraps one in the exports the page calls.
 
-use la_belle_lucie_core::{Card, Command, Game, Hint, Rules};
+use la_belle_lucie_core::{parse_layout, Card, Command, Game, Hint, Rules};
 
 /// Bump when the state's shape changes in a way a client must notice.
 pub const PROTOCOL: u32 = 2;
@@ -55,6 +55,17 @@ impl Session {
             game: Game::new(u64::from(seed), Rules::from_code(rules)),
             hint: None,
         }
+    }
+
+    /// Replaces the table with the layout game of `text` (docs/PROTOCOL.md);
+    /// false, and nothing changes, if the layout is refused.
+    pub fn lesson(&mut self, text: &str, rules: u32) -> bool {
+        let Ok((fans, home)) = parse_layout(text) else {
+            return false;
+        };
+        self.game = Game::from_layout(Rules::from_code(rules), fans, home);
+        self.hint = None;
+        true
     }
 
     /// Carries out one command line; true if it was accepted.
@@ -167,6 +178,23 @@ pub mod ffi {
     pub extern "C" fn la_belle_lucie_new(seed: u32, rules: u32) {
         SESSION.with(|s| *s.borrow_mut() = Some(Session::new(seed, rules)));
         render();
+    }
+
+    /// Starts a layout game from the text in the `len` bytes just written
+    /// (replacing any table); 1 if it parsed, else 0 and the old table stays.
+    #[no_mangle]
+    pub extern "C" fn la_belle_lucie_lesson(len: usize, rules: u32) -> u32 {
+        let text = IN.with(|buffer| {
+            let buffer = buffer.borrow();
+            String::from_utf8_lossy(&buffer[..len.min(buffer.len())]).into_owned()
+        });
+        let started = SESSION.with(|s| {
+            let mut s = s.borrow_mut();
+            let session = s.get_or_insert_with(|| Session::new(0, rules));
+            session.lesson(&text, rules)
+        });
+        render();
+        u32::from(started)
     }
 
     /// Carries out the command in the `len` bytes just written; 1 if accepted.

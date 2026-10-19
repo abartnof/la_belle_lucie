@@ -7,8 +7,18 @@ The engine holds the rules; the page draws `state` and sends commands.
 |---|---|
 | `_alloc(len)` | Address of `len` writable bytes for a command. |
 | `_new(seed, rules)` | New table. `rules` is the code in RULES.md. |
+| `_lesson(len, rules)` | Replaces the table with the layout game in the bytes just written; 1 if it parsed, else 0 and the old table stays. |
 | `_send(len)` | Runs the command in the bytes just written; 1 if accepted. |
 | `_out()`, `_out_len()` | The state, UTF-8 JSON. |
+
+## Layout games (`_lesson`)
+Text `"<fans> ; <home>"`: fans separated by `/`, cards as codes bottom to top, an empty fan `-`,
+home as four counts in suit order S H D C: `6H 9C / KS 7H / - ; 0 0 0 0`. Refused if a card is
+unreadable or twice, a card's rank is at or below its suit's home count, a count is over 13,
+there are more than 30 fans, or the text exceeds 2000 bytes. The cards need not make up the pack
+(the game is won when 52 are home). It is not a seeded deal: `seed` is 0 and `#seed=` links do not
+apply. Moves, hint, undo (back to the layout) and redeal behave as usual; a redeal shuffles with
+seed 0's stream. The page calls it `lesson({layout, rules})`, answering the state or null.
 
 ## Commands (one line)
 | Command | Means |

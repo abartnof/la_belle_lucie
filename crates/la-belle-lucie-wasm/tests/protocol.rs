@@ -266,3 +266,68 @@ fn redeal_appears_only_when_nothing_else_does() {
         }
     }
 }
+
+fn lesson(text: &str) -> Session {
+    let mut s = Session::new(1, CLASSIC);
+    assert!(s.lesson(text, CLASSIC), "{text}");
+    s
+}
+
+#[test]
+fn a_lesson_starts_the_position_and_plays_and_undoes() {
+    let mut s = lesson("6H 9C / KS 7H / 3D TC ; 0 0 0 0");
+    let st = state(&s);
+    assert_eq!(
+        (st["seed"].clone(), st["moves"].clone()),
+        (json!(0), json!(0))
+    );
+    assert_eq!(
+        st["fans"],
+        json!([["6H", "9C"], ["KS", "7H"], ["3D", "TC"]])
+    );
+    assert_eq!(st["home"], json!([0, 0, 0, 0]));
+    assert_eq!(legal(&st), ["f0>f2"]);
+    assert!(s.send("f0>f2"));
+    assert_eq!(legal(&state(&s)), ["f0>f1"]);
+    assert!(s.send("hint"));
+    assert!(s.send("undo"));
+    let st = state(&s);
+    assert_eq!(
+        st["fans"],
+        json!([["6H", "9C"], ["KS", "7H"], ["3D", "TC"]])
+    );
+    assert_eq!(st["undoable"], false);
+}
+
+#[test]
+fn the_lesson_positions_offer_what_they_teach() {
+    assert_eq!(legal(&state(&lesson("3S 6H / KC 7H ; 0 0 0 0"))), ["f0>f1"]);
+    assert_eq!(
+        legal(&state(&lesson("2S 9H / 5C KD / 7D 3H ; 0 0 0 0"))),
+        ["redeal"]
+    );
+    let mut b = legal(&state(&lesson("2S 7H / 9C 6H / JD 5H ; 1 0 0 0")));
+    b.sort();
+    assert_eq!(b, ["f1>f0", "f2>f1"]);
+    let mut s = lesson("KD 2S AS ; 0 0 0 0");
+    assert!(s.send("f0>h") && s.send("f0>h"));
+    assert_eq!(state(&s)["home"], json!([2, 0, 0, 0]));
+}
+
+#[test]
+fn a_refused_layout_keeps_the_old_session() {
+    let mut s = Session::new(7, CLASSIC);
+    let before = s.state();
+    for bad in ["6H 6H ; 0 0 0 0", "garbage", "2S ; 2 0 0 0", ""] {
+        assert!(!s.lesson(bad, CLASSIC), "{bad:?}");
+        assert_eq!(s.state(), before);
+    }
+}
+
+#[test]
+fn the_near_won_lesson_wins() {
+    let mut s = lesson("KC ; 13 13 13 12");
+    assert_eq!(legal(&state(&s)), ["f0>h"]);
+    assert!(s.send("f0>h"));
+    assert_eq!(state(&s)["prompt"], "won");
+}
