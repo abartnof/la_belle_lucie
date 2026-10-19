@@ -18,6 +18,14 @@ A top card can also move onto another fan's top card if it is the **same suit** 
 
 One card moves at a time. This is how you reach the cards buried below.
 
+**But a card you build can only leave by going home**, so everything under it waits. Before you build, look at what you would cover.
+
+# The check
+
+The heart of the game. A card you build can only leave by going home, so what lies under it is shut in until its suit has gone home that far.
+
+Before you build, ask: *is anything under that pile wanted sooner?* If not, it is free. If so, it is a price: pay it only for something worth more. Worst of all is a lower card of the same suit under it.
+
 # Redeal
 
 When no other move is left, you may **redeal**. The cards not yet home are gathered and dealt again in threes. They are shuffled, unless the rules say *in order*.

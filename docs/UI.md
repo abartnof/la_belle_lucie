@@ -21,7 +21,7 @@ Exactly two sentences, in that order: what to do here; the generalisable rule it
 illustrates (no card names in the rule). Tested.
 
 ## `tutorial-flow.js`
-`duePage(prevState, state, seen, options)` -> page key or null. Pages in `tutorial.md`.
+`duePage(prevState, state, seen, options)` -> page key or null. Pages in `tutorial.md`: table, foundations and building before the first move; then just in time redeal, draw, king, and `check` (the first time, after a move, that a legal build would cover a lower card of its own suit or one wanted before the builder's suit can reach it, by `hints.js` `pileFacts`).
 Principle: say exactly what the player needs before meeting each new element, no more.
 
 ## `table.js`

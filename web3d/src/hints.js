@@ -90,15 +90,15 @@ const pick = (list, k) => list[k % list.length];
 // The principles, each a rule of thumb: no card, rank, suit or fan, no digit.
 export const WHY = Object.freeze({
   lock: [
-    "A stacked card can only leave for its foundation, so never stack a card over one it must follow home.",
-    "Before you stack a card, check that nothing beneath it has to go home first.",
+    "A card you build can only leave for its foundation, so never build over a lower card of its own suit: neither could get home.",
+    "Before you build, look under the pile: a lower card of the same suit there can never get home until the pile is undone.",
   ],
   lock_last: [
     "With no redeal left nothing is ever shuffled loose, so a lock made now lasts to the end of the game.",
     "On the last deal every freeze is permanent, so be sure the card beneath really can wait.",
   ],
   urgent: [
-    "A stacked card stays until it goes home, so cover only what can wait that long, and weigh it against what the move gives you.",
+    "Before you build, ask whether anything under the pile is wanted before this card's suit can reach it, and weigh that against what the move gives you.",
     "Count before you cover: whatever lies beneath waits for the card above to go home.",
     "Every move frees one card and buries another, so ask which of the two you will want sooner.",
   ],
@@ -119,8 +119,8 @@ export const WHY = Object.freeze({
     "Favour the move that brings the next useful card into reach.",
   ],
   chain: [
+    "Building is free when nothing under the pile is wanted before this card's suit can reach it.",
     "A pile stacked in order of one suit unwinds by itself, so covering costs nothing when what lies beneath is wanted last.",
-    "Covering is cheap when the card above will leave before the card beneath is needed.",
   ],
   open: [
     "Keep options open: a position with many moves can absorb a mistake, one with a single move cannot.",

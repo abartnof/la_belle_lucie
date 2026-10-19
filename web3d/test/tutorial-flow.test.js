@@ -56,6 +56,26 @@ test("draw when ready; king when a fan empties and kings fill", () => {
   assert.deepEqual(run(states, { king: false }), ["table", "foundations", "building", "redeal", "draw"]);
 });
 
+// The check: the first time a build on the table would cover something wanted before the card's suit gets there.
+const risky = (o = {}) => st({ moves: 1, home: [1, 0, 0, 0], fans: [["2S", "7H"], ["9C", "6H"]], legal: ["f1>f0"], ...o });
+const safe = (o = {}) => risky({ fans: [["JS", "7H"], ["9C", "6H"]], ...o });
+
+test("the check falls due the first time a build would freeze what is wanted soon, once", () => {
+  assert.deepEqual(run([st({}), safe(), risky(), risky({ moves: 2 })]), ["table", "foundations", "building", "check"]);
+});
+
+test("the check is not due at the deal, nor for a lock of a lower card of the same suit it is, nor for a safe build", () => {
+  assert.deepEqual(run([risky({ moves: 0 })]), ["table", "foundations", "building"]);
+  assert.equal(duePage(null, safe(), new Set(["table", "foundations", "building"]), {}), null);
+  const lock = risky({ fans: [["2H", "7H"], ["9C", "6H"]] });
+  assert.equal(duePage(null, lock, new Set(["table", "foundations", "building"]), {}), "check");
+});
+
+test("the check ignores moves home, redeals and draws", () => {
+  const seen = new Set(["table", "foundations", "building", "redeal", "draw", "king"]);
+  for (const legal of [["f1>h"], ["redeal"], ["draw f0:0>f1"]]) assert.equal(duePage(null, risky({ legal }), seen, {}), null);
+});
+
 test("pages already seen never come back; a finished game asks for none", () => {
   assert.equal(duePage(null, st({}), new Set(PAGE_KEYS), {}), null);
   assert.equal(duePage(null, st({ prompt: "won" }), new Set(), {}), null);

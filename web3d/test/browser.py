@@ -31,7 +31,7 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ("file:", "data:", "blob:")
 SIZES = [("desktop", 1280, 720, False), ("phone", 390, 844, True)]
-SEEN = '["table","foundations","building","redeal","draw","king"]'
+SEEN = '["table","foundations","building","check","redeal","draw","king"]'
 WAIT = 90_000
 
 

@@ -24,7 +24,7 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ("file:", "data:", "blob:")
 WAIT = 90_000
-SEEN_ALL = '["table","foundations","building","redeal","draw","king"]'
+SEEN_ALL = '["table","foundations","building","check","redeal","draw","king"]'
 KEY = "la-belle-lucie.prefs"
 OPEN = "dialog[open]"
 
