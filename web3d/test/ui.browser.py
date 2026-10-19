@@ -24,7 +24,7 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ("file:", "data:", "blob:")
 WAIT = 90_000
-SEEN_ALL = '["table","foundations","building","check","redeal","draw","king"]'
+SEEN_ALL = '["lessons","draw","king"]'
 KEY = "la-belle-lucie.prefs"
 OPEN = "dialog[open]"
 
@@ -99,6 +99,7 @@ def table_say(page, want=""):
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--page", default=str(ROOT / "web3d" / "la-belle-lucie.html"))
+    ap.add_argument("--shots", default=None)
     args = ap.parse_args()
     path = Path(args.page)
     if not path.exists():
@@ -164,12 +165,12 @@ def main() -> int:
             bad("first: a hash must not auto-deal")
         ctx.close()
 
-        # ---- tutorial starts at the first deal, not behind the menu
+        # ---- the lessons start at the first deal, not behind the menu
         ctx, page = fresh(browser, url, problems, requests, "tutfirst", seen="[]", deal=False)
-        if page.locator("dialog[open] .lbl-tutorial, dialog.lbl-tutorial[open]").count():
-            bad("tutfirst: the tutorial must not open behind the menu")
+        if page.locator(".lbl-lesson:not([hidden])").count():
+            bad("tutfirst: the lessons must not show behind the menu")
         page.get_by_role("button", name="Deal", exact=True).click()
-        page.wait_for_function("document.querySelector('dialog[open] h2')?.textContent === 'The table'", timeout=WAIT)
+        page.wait_for_selector(".lbl-lesson:not([hidden])", timeout=WAIT)
         ctx.close()
 
         # ---- end screen: New game opens the menu
@@ -209,22 +210,47 @@ def main() -> int:
                 bad("endscreen: Same deal again should redeal at once")
         ctx.close()
 
-        # ---- the tutorial before the first move; skip
+        # ---- the lessons: the table is live; Next waits for the move; Skip deals the real game
         ctx, page = fresh(browser, url, problems, requests, "tutorial", seen="[]")
-        page.wait_for_selector(OPEN, timeout=WAIT)
-        if state(page)["moves"] != 0:
-            bad("tutorial: should appear before the first move")
-        if dialog_title(page) != "The table":
-            bad(f"tutorial: first page should be 'The table', got {dialog_title(page)!r}")
-        page.get_by_role("button", name="Got it").click()
-        page.wait_for_function("document.querySelector('dialog[open] h2')?.textContent === 'The foundations'", timeout=WAIT)
-        page.get_by_role("button", name="Skip the tutorial").click()
-        page.wait_for_timeout(500)
-        if page.locator(OPEN).count():
-            bad("tutorial: skipping should leave no dialog open")
-        stored = page.evaluate(f'JSON.parse(localStorage.getItem("{KEY}")).seen')
-        if not {"table", "foundations", "building"} <= set(stored):
-            bad(f"tutorial: skip should be remembered, seen={stored!r}")
+        page.wait_for_selector(".lbl-lesson:not([hidden])", timeout=WAIT)
+        settle(page)
+        if page.locator(".lbl-lesson-count").inner_text() != "1 of 6":
+            bad(f"lessons: counter should read '1 of 6', got {page.locator('.lbl-lesson-count').inner_text()!r}")
+        nxt = page.locator(".lbl-lesson").get_by_role("button", name="Next")
+        if not nxt.is_disabled():
+            bad("lessons: Next should be disabled before the move")
+        if page.locator(".lbl-hint:not([hidden])").count() or page.get_by_role("button", name="Hint").is_visible():
+            bad("lessons: hints are off during the lessons")
+        if not page.evaluate("window.lbl.lessons.view().arrow"):
+            bad("lessons: lesson 1 should show an arrow")
+        shots = Path(args.shots) if args.shots else None
+        if shots:
+            page.screenshot(path=str(shots / "lesson1.png"))
+        st = state(page)
+        src = next(i for i, f in enumerate(st["fans"]) if f[-1] == "6H")
+        dst = next(i for i, f in enumerate(st["fans"]) if f[-1] == "7H")
+        for target in (st["fans"][src][-1], {"fan": dst}):
+            p = page.evaluate("(c) => window.lbl.table.screenOf(c)", target)
+            page.mouse.click(p["x"], p["y"])
+            page.wait_for_timeout(300)
+        page.wait_for_function("window.lbl.state().moves === 1", timeout=WAIT)
+        settle(page)
+        if not nxt.is_enabled():
+            bad("lessons: Next should be enabled once the 6H is on the 7H")
+        if page.locator(".lbl-end:not([hidden])").count():
+            bad("lessons: no end screen over a lesson")
+        nxt.click()
+        page.wait_for_function("document.querySelector('.lbl-lesson-count').textContent === '2 of 6'", timeout=WAIT)
+        settle(page)
+        if shots:
+            page.screenshot(path=str(shots / "lesson2.png"))
+        page.get_by_role("button", name="Skip tutorial").click()
+        page.wait_for_function("!window.lbl.lessons.active && window.lbl.state().seed === 7 && window.lbl.state().moves === 0", timeout=WAIT)
+        settle(page)
+        if page.locator(".lbl-lesson:not([hidden])").count() or len(state(page)["fans"]) != 18:
+            bad("lessons: skipping should deal the real game and take the panel away")
+        if "lessons" not in page.evaluate(f'JSON.parse(localStorage.getItem("{KEY}")).seen'):
+            bad("lessons: skip should be remembered")
         ctx.close()
 
         # ---- settings persist
@@ -244,6 +270,14 @@ def main() -> int:
         page.wait_for_selector(OPEN + " #lbl-seed", timeout=WAIT)
         if page.locator("#lbl-n-hints").is_checked() or not page.locator("#lbl-n-home").is_checked():
             bad("settings: the New game menu should show the saved aids")
+        # Music is the first thing in the menu, on by default; unchecking it is kept.
+        first_box = page.eval_on_selector(OPEN + " fieldset input", "(i) => i.id")
+        if first_box != "lbl-n-music" or not page.locator("#lbl-n-music").is_checked():
+            bad("new game: Music should be the first option, on by default")
+        page.locator("#lbl-n-music").uncheck()
+        if page.evaluate("window.lbl.music.isOn()"):
+            bad("new game: unchecking Music should stop it")
+        page.locator("#lbl-n-music").check()
         page.locator("#lbl-n-hints").check()
         page.get_by_role("button", name="Deal", exact=True).click()
         settle(page)
@@ -481,13 +515,22 @@ def main() -> int:
             bad(f"buttons: Redeal enabled={redeal.is_enabled()} but legal={'redeal' in st['legal']} (left {st['redeals_left']})")
         ctx.close()
 
+        # ---- help: the lessons again, with a confirmation when a game is in progress
+        ctx, page = fresh(browser, url, problems, requests, "helplessons")
+        page.get_by_role("button", name="Help").click()
+        page.get_by_role("button", name="Play the lessons again").click()
+        page.wait_for_selector(".lbl-lesson:not([hidden])", timeout=WAIT)
+        page.get_by_role("button", name="Skip tutorial").click()
+        page.wait_for_function("!window.lbl.lessons.active && window.lbl.state().seed === 7", timeout=WAIT)
+        ctx.close()
+
         # ---- help, focus, Escape
         ctx, page = fresh(browser, url, problems, requests, "help")
         helpb = page.get_by_role("button", name="Help")
         helpb.click()
         page.wait_for_selector(OPEN)
-        page.get_by_role("button", name="Building").first.click()
-        page.wait_for_function("document.querySelector('dialog[open] h2')?.textContent === 'Building'", timeout=WAIT)
+        page.get_by_role("button", name="The draw").first.click()
+        page.wait_for_function("document.querySelector('dialog[open] h2')?.textContent === 'The draw'", timeout=WAIT)
         if page.locator(OPEN).get_by_role("button", name="Skip the tutorial").count():
             bad("help: a page opened from Help should not offer skipping")
         page.keyboard.press("Escape")
@@ -565,24 +608,30 @@ def main() -> int:
 
         # ---- tutorial dialogs: Escape dismisses, focus returns, a page replaced in place
         ctx, page = fresh(browser, url, problems, requests, "tutdlg", seen="[]")
+        page.wait_for_selector(".lbl-lesson:not([hidden])", timeout=WAIT)
+        page.get_by_role("button", name="Skip tutorial").click()
+        page.wait_for_function("!window.lbl.lessons.active", timeout=WAIT)
+        page.evaluate("window.lbl.ui.showPage('draw')")
         page.wait_for_selector(OPEN, timeout=WAIT)
         page.keyboard.press("Escape")
         page.wait_for_timeout(700)
         if page.locator(OPEN).count():
-            bad("tutdlg: Escape on a tutorial page should dismiss the tutorial, not open the next page")
+            bad("tutdlg: Escape on a tutorial page should dismiss it")
         if page.evaluate("document.activeElement?.id") != "stage":
             bad(f"tutdlg: focus should return to the table, is on {page.evaluate('document.activeElement?.tagName')}")
         ctx.close()
         ctx, page = fresh(browser, url, problems, requests, "tutswap", seen="[]")
-        page.wait_for_selector(OPEN, timeout=WAIT)
-        page.evaluate("window.lbl.ui.showPage('building')")
-        page.evaluate("window.lbl.ui.showPage('redeal')")
+        page.wait_for_selector(".lbl-lesson:not([hidden])", timeout=WAIT)
+        page.get_by_role("button", name="Skip tutorial").click()
+        page.wait_for_function("!window.lbl.lessons.active", timeout=WAIT)
+        page.evaluate("window.lbl.ui.showPage('king')")
+        page.evaluate("window.lbl.ui.showPage('draw')")
         page.wait_for_timeout(500)
-        if page.locator(OPEN).count() != 1 or dialog_title(page) != "Redeal":
+        if page.locator(OPEN).count() != 1 or dialog_title(page) != "The draw":
             bad(f"tutswap: a page opened over a page should replace it, got {dialog_title(page)!r}")
         page.get_by_role("button", name="Got it").click()
         page.wait_for_timeout(500)
-        if dialog_title(page) not in (None, "The table", "The foundations", "Building"):
+        if dialog_title(page) not in (None, "The draw", "Kings fill"):
             bad(f"tutswap: unexpected dialog {dialog_title(page)!r}")
         # Whatever follows, the dialogs close in the end and focus is never lost to <body>.
         for _ in range(4):
@@ -643,10 +692,11 @@ def main() -> int:
 
         # ---- reduced motion: play still works, tutorial still shows
         ctx, page = fresh(browser, url, problems, requests, "reduced", seen="[]", reduced=True, clear=True)
-        page.wait_for_selector(OPEN, timeout=WAIT)
+        page.wait_for_selector(".lbl-lesson:not([hidden])", timeout=WAIT)
         if not page.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches"):
             bad("reduced: emulation did not take")
-        page.get_by_role("button", name="Skip the tutorial").click()
+        page.get_by_role("button", name="Skip tutorial").click()
+        page.wait_for_function("!window.lbl.lessons.active && window.lbl.state().moves === 0", timeout=WAIT)
         page.wait_for_timeout(300)
         saved = page.evaluate(f'JSON.parse(localStorage.getItem("{KEY}"))')
         if saved.get("speed") not in (None, "instant"):
@@ -668,7 +718,7 @@ def main() -> int:
         browser.close()
 
     problems += [f"network request: {u}" for u in requests if not u.startswith(LOCAL)]
-    print("\n".join(problems) if problems else "ui browser: ok (tutorial, settings, new game, hint, undo/redeal, help, focus, reduced motion)")
+    print("\n".join(problems) if problems else "ui browser: ok (lessons, settings, new game, hint, undo/redeal, help, focus, reduced motion)")
     return 1 if problems else 0
 
 

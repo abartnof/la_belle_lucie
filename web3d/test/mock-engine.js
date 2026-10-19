@@ -28,8 +28,9 @@ export function createMockEngine() {
   let g = null;
   let log = [];
   let hint = null;
+  let layoutGame = null; // a lesson's layout: { fans, home } the replay starts from
 
-  const fresh = () => ({ fans: deal(shuffle(SUITS.flatMap((s) => [...RANKS].map((r) => r + s)), seed)), home: [0, 0, 0, 0], redeals: (rules >> 1) & 3, moves: 0 });
+  const fresh = () => layoutGame ? { fans: layoutGame.fans.map((f) => [...f]), home: [...layoutGame.home], redeals: (rules >> 1) & 3, moves: 0 } : ({ fans: deal(shuffle(SUITS.flatMap((s) => [...RANKS].map((r) => r + s)), seed)), home: [0, 0, 0, 0], redeals: (rules >> 1) & 3, moves: 0 });
   const rankOf = (c) => RANKS.indexOf(c[0]);
   const legal = () => {
     const out = [];
@@ -73,7 +74,22 @@ export function createMockEngine() {
     };
   };
   return {
+    // "<fans> ; <home S H D C>", as the engine's `lesson` reads it; null if refused.
+    lesson: ({ layout, rules: r = 4 }) => {
+      const [fansText, homeText] = String(layout).split(";").map((t) => t.trim());
+      const home = (homeText ?? "").split(/\s+/).map(Number);
+      if (home.length !== 4 || home.some((n) => !Number.isInteger(n))) return null;
+      const fans = fansText.split("/").map((f) => (f.trim() === "-" ? [] : f.trim().split(/\s+/)));
+      seed = 0;
+      rules = r;
+      layoutGame = { fans, home };
+      g = fresh();
+      log = [];
+      hint = null;
+      return state();
+    },
     new: (opts) => {
+      layoutGame = null;
       seed = opts.seed >>> 0;
       rules = opts.rules ?? 4;
       g = fresh();

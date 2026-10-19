@@ -285,7 +285,7 @@ export function createTable(canvas, hooks = {}) {
     return { ...margins, ...(hooks.margins?.() ?? {}) };
   }
 
-  const marginsKey = (m) => `${aspect()}|${m.top}|${m.bottom}|${m.side}`;
+  const marginsKey = (m) => `${aspect()}|${m.top}|${m.bottom}|${m.side}|${m.left ?? ""}|${m.right ?? ""}`;
   let usedMargins = null;
   function relayout({ instant = false } = {}) {
     if (!state) return;

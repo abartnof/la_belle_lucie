@@ -9,6 +9,7 @@ import { decodeBase64 } from "../../kit/js/engine.js";
 import { loadEngine } from "./engine.js";
 import { hashFor, parseHash } from "./hash.js";
 import { cardName } from "./layout.js";
+import { createLessonRun } from "./lesson-run.js";
 import { firstMenu } from "./menu-start.js";
 import { createMusic, TRACKS } from "./music.js";
 import { defaultStore, loadPrefs } from "./prefs.js";
@@ -60,6 +61,9 @@ export async function run(makeEngine) {
   let hintDismissed = false;
   let ui = null;
   let animating = false; // a redeal is playing: clicks and hints wait
+  let lessonView = null; // the lesson panel's step while the lessons run (lessons.js `viewOf`)
+  let pending = null; // the real deal the lessons give way to: { seed, rules }
+  let lessonSeen = { index: -1, kind: null }; // what was last announced
   let settings = { autoHome: false, highlight: true, speed: "normal" };
 
   // The overlay's strips, so the table is framed between them.
@@ -75,7 +79,15 @@ export async function run(makeEngine) {
     // moves it.
     const top = [".lbl-hud"].map(px).filter(Boolean).reduce((m, r) => Math.max(m, (r.bottom + 6) / h), 0);
     const bar = px(".lbl-bar");
-    return { ...(top ? { top } : {}), ...(bar ? { bottom: (h - bar.top + 6) / h } : {}) };
+    const out = { ...(top ? { top } : {}), ...(bar ? { bottom: (h - bar.top + 6) / h } : {}) };
+    // The lesson panel sits at the right (above the bar on a narrow window): the table is framed beside it.
+    const panel = px(".lbl-lesson");
+    if (panel) {
+      const w = window.innerWidth || 1;
+      if (w < 760) out.bottom = (h - panel.top + 6) / h;
+      else out.right = (w - panel.left + 12) / w;
+    }
+    return out;
   }
 
   const table = createTable(canvas, {
@@ -89,7 +101,9 @@ export async function run(makeEngine) {
 
   function paint() {
     const targets = settings.highlight ? targetsOf(state, sel) : [];
-    const hint = state.hint && state.prompt === "play" && settings.hints !== false && !hintDismissed ? hintMarks(state.hint) : null;
+    // In the lessons the lesson's arrow guides, whatever the hint setting says.
+    const shown = lessonView ? lessonView.arrow : state.hint && settings.hints !== false && !hintDismissed ? state.hint : null;
+    const hint = shown && state.prompt === "play" ? hintMarks(shown) : null;
     table.highlight({ select: sel?.card ?? null, targets, hint });
   }
 
@@ -111,6 +125,7 @@ export async function run(makeEngine) {
     ui.update(state);
     table.setMargins({});
     if (say) announce(say);
+    else if (lessonView) return;
     else if (state.prompt === "won") announce("All 52 cards are home. You have won.");
     else if (state.prompt === "lost") announce("No move is left.");
   }
@@ -127,13 +142,31 @@ export async function run(makeEngine) {
       return;
     }
     setState(result.state, { redeal: command.trim() === "redeal" });
+    if (lessons.active) lessons.observe(state);
     if (command === "hint" && state.hint) announce(state.hint.card ? `Hint: move the ${cardName(state.hint.card)}.` : "Hint: take a redeal.");
   }
 
+  // The menu's Deal. A player who has not finished or skipped the lessons plays them first; the deal waits.
   function newGame({ seed, rules }) {
     if (stopped) return;
-    const s = seed ?? randomSeed();
-    const code = rules ?? DEFAULT_RULES;
+    const deal = { seed: seed ?? randomSeed(), rules: rules ?? DEFAULT_RULES };
+    if (lessons.active) {
+      // The menu was used mid-lessons: leave them (unfinished, so they come again) and deal.
+      pending = null;
+      lessons.skip();
+    } else if (canLesson && !ui.lessonsSeen()) {
+      startLessons(deal);
+      return;
+    }
+    dealReal(deal);
+  }
+
+  function startLessons(deal) {
+    pending = deal;
+    lessons.start();
+  }
+
+  function dealReal({ seed: s, rules: code }) {
     const next = engine.new({ seed: s, rules: code });
     try {
       history.replaceState(null, "", hashFor(s, code));
@@ -143,8 +176,45 @@ export async function run(makeEngine) {
     setState(next, { say: "New game dealt." });
   }
 
+  // The lessons need the engine's `lesson` (docs/PROTOCOL.md); without it the page plays as before.
+  const canLesson = typeof engine.lesson === "function";
+  const lessons = createLessonRun({
+    engine,
+    hooks: {
+      show: (s) => setState(s, { say: null }),
+      panel(view) {
+        lessonView = view;
+        if (!view) return;
+        ui.lesson(view);
+        paint();
+        table.setMargins({});
+        if (view.index !== lessonSeen.index) announce(`Lesson ${view.index + 1} of ${view.count}. ${view.title}. ${view.text}`);
+        else if (view.kind !== lessonSeen.kind && view.kind !== "task") announce(view.text);
+        lessonSeen = { index: view.index, kind: view.kind };
+      },
+      end({ failed }) {
+        lessonSeen = { index: -1, kind: null };
+        const deal = pending;
+        pending = null;
+        if (!failed && deal) ui.markLessonsSeen();
+        if (deal) dealReal(deal);
+        ui.lesson(null);
+        table.setMargins({});
+      },
+    },
+  });
+
   ui = createUi(uiRoot, {
     newGame,
+    lessonNext: () => {
+      if (!animating && lessons.next()) canvas.focus();
+    },
+    lessonSkip: () => lessons.skip(),
+    startLessons: () => {
+      if (stopped || !canLesson) return;
+      if (lessons.active) return;
+      startLessons({ seed: state.seed, rules: state.rules });
+    },
     undo: () => send("undo"),
     hint: () => send("hint"),
     hintDismissed: () => {
@@ -153,6 +223,7 @@ export async function run(makeEngine) {
     },
     redeal: () => state.legal.includes("redeal") && send("redeal"),
     focusTable: () => canvas.focus(),
+    musicNext: () => music.next(),
     settingsChanged(s) {
       settings = { ...settings, ...s };
       table.setSettings(settings);
@@ -198,7 +269,7 @@ export async function run(makeEngine) {
   ui.openMenu({ ...firstMenu(given, prefs), first: true });
 
   // For tests and the curious: a read-only window onto the page.
-  window.lbl = { ui, music, state: () => state, table, send: (c) => send(c), selected: () => sel, stopped: () => stopped };
+  window.lbl = { lessons, ui, music, state: () => state, table, send: (c) => send(c), selected: () => sel, stopped: () => stopped };
 }
 
 if (typeof document !== "undefined" && typeof WASM_BASE64 !== "undefined") {

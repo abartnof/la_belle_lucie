@@ -17,7 +17,7 @@ const SUIT_WORD = { S: ["spade", "spades"], H: ["heart", "hearts"], D: ["diamond
 const RANKS = "A23456789TJQK";
 const SUIT_ORDER = "SHDC"; // the order of state.home
 const WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen"];
-const num = (n) => WORDS[n] ?? String(n); // a count in words, or digits past thirteen
+export const num = (n) => WORDS[n] ?? String(n); // a count in words, or digits past thirteen
 const LONG = 34; // words: past this, a sentence drops its least important clauses
 
 // "6H" -> "6♥"; "TS" -> "10♠".

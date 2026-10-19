@@ -5,15 +5,19 @@
 //
 // createUi(root, hooks) -> { update(state), settings(), busy(bool), openMenu({seed, rules}) }
 // openMenu opens the New game menu with no game behind it (the page's start): it cannot be cancelled.
-// hooks = { newGame({seed|null, rules}), undo(), hint(), redeal(), settingsChanged(settings) }
+// hooks = { newGame({seed|null, rules}), undo(), hint(), redeal(), settingsChanged(settings),
+//           lessonNext(), lessonSkip(), startLessons() }
+// lesson(view | null) shows the lesson panel (lessons.js `viewOf`) or takes it away; lessonsSeen() and
+// markLessonsSeen() read and keep the prefs `seen` key "lessons".
 
 import { PATTERNS } from "../../kit/js/surfaces.js";
 import { parseTutorial } from "../../kit/js/tutorial.js";
 import TUTORIAL from "../tutorial.md";
 import { hintText } from "./hints.js";
 import { loadPrefs, savePrefs, defaultStore, decodeRules, encodeRules, stepRedeals, PRESETS, OPTIONS, presetOf, parseSeed, seedProblem, normalizeRules, REDEAL_FX } from "./prefs.js";
+import { LESSONS_KEY } from "./lessons.js";
 import { EFFECT_NAMES } from "./redeal-fx.js";
-import { duePage, pageNote, PAGE_KEYS } from "./tutorial-flow.js";
+import { duePage, PAGE_KEYS } from "./tutorial-flow.js";
 
 const DRAW_WORDS = { later: "on the last deal", ready: "ready", used: "used" };
 
@@ -46,6 +50,10 @@ function svg(paths) {
 }
 const NOTE = "M12 3v10.55a4 4 0 1 0 2 3.45V7h4V3h-6z";
 const SLASH = "M4.3 3 3 4.3 19.7 21 21 19.7z";
+// Transport symbols, as on any player: play, pause, skip to the next.
+const PLAY = "M8 5v14l11-7z";
+const PAUSE = "M6 5h4v14H6zM14 5h4v14h-4z";
+const NEXT = "M6 6l8.5 6L6 18zM16 6h2v12h-2z";
 
 function spansToNodes(spans, openPage) {
   return spans.map((s) => {
@@ -160,14 +168,40 @@ export function createUi(root, hooks) {
   const sDraw = stat("Draw");
   const sMoves = stat("Moves");
   // The music: a Material 3 toggle icon button at the end of the HUD.
-  const bMusic = el("button", { type: "button", class: "lbl-iconbtn", "aria-pressed": "true", "aria-label": "Music", title: "Music", onclick: () => changed({ music: !prefs.settings.music }) }, svg([["lbl-note", NOTE], ["lbl-slash", SLASH]]));
+  // Collapsed, a note; opened, it grows sideways into a player: the song's name, play or pause, next.
+  const musicTitle = el("span", { class: "lbl-music-title", id: "lbl-music-title" });
+  const bPlay = el("button", { type: "button", class: "lbl-iconbtn lbl-flat lbl-music-play", onclick: () => changed({ music: !prefs.settings.music }) });
+  const playIcon = svg([["lbl-playing", PAUSE], ["lbl-stopped", PLAY]]);
+  bPlay.append(playIcon);
+  const bNext = el("button", { type: "button", class: "lbl-iconbtn lbl-flat lbl-music-next", "aria-label": "Next song", title: "Next song", onclick: () => hooks.musicNext?.() }, svg([["", NEXT]]));
+  const musicBody = el("div", { class: "lbl-music-body", id: "lbl-music-body" }, el("div", { class: "lbl-music-inner" }, musicTitle, bPlay, bNext));
+  const bMusic = el("button", { type: "button", class: "lbl-iconbtn lbl-music-toggle", "aria-pressed": "true", "aria-expanded": "false", "aria-controls": "lbl-music-body", "aria-label": "Music player", title: "Music" }, svg([["lbl-note", NOTE], ["lbl-slash", SLASH]]));
+  const musicBox = el("div", { class: "lbl-music", role: "group", "aria-label": "Music" }, bMusic, musicBody);
+  const setMusicOpen = (open) => {
+    musicBox.classList.toggle("lbl-open", open);
+    bMusic.setAttribute("aria-expanded", String(open));
+    musicBody.inert = !open;
+  };
+  setMusicOpen(false);
+  bMusic.addEventListener("click", () => setMusicOpen(!musicBox.classList.contains("lbl-open")));
+  document.addEventListener("pointerdown", (e) => musicBox.classList.contains("lbl-open") && !musicBox.contains(e.target) && setMusicOpen(false));
+  musicBox.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !musicBox.classList.contains("lbl-open")) return;
+    e.stopPropagation();
+    setMusicOpen(false);
+    bMusic.focus();
+  });
   function musicState(info) {
     const on = prefs.settings.music;
     bMusic.setAttribute("aria-pressed", String(on));
-    bMusic.title = on ? (info?.title ? `Music on: ${info.title}. Click to turn it off.` : "Music on. Click to turn it off.") : "Music off. Click to turn it on.";
-    bMusic.setAttribute("aria-label", on ? "Turn the music off" : "Turn the music on");
+    bMusic.title = on && info?.title ? `Music: ${info.title}` : on ? "Music" : "Music (paused)";
+    musicTitle.textContent = info?.title ?? "Music";
+    bPlay.setAttribute("aria-pressed", String(on));
+    bPlay.setAttribute("aria-label", on ? "Pause the music" : "Play the music");
+    bPlay.title = on ? "Pause" : "Play";
+    playIcon.classList.toggle("lbl-is-playing", on);
   }
-  const hud = el("ul", { class: "lbl-hud", "aria-label": "Game status" }, sHome.node, sRedeals.node, sDraw.node, sMoves.node, el("li", { class: "lbl-tool" }, bMusic));
+  const hud = el("ul", { class: "lbl-hud", "aria-label": "Game status" }, sHome.node, sRedeals.node, sDraw.node, sMoves.node, el("li", { class: "lbl-tool" }, musicBox));
 
   const bUndo = button("Undo", () => hooks.undo());
   const bHint = button("Hint", () => hooks.hint());
@@ -197,8 +231,46 @@ export function createUi(root, hooks) {
     el("div", { class: "lbl-row" }, button("New game", () => openNewGame(), "lbl-primary", { "data-first": true }), button("Same deal again", () => hooks.newGame({ seed: state.seed, rules: state.rules }), "lbl-quiet")),
   );
 
+  // ---- the lesson panel ---------------------------------------------------------
+  // A Material 3 card at the side of the table (above the bar on a narrow window):
+  // the step counter, a title, one or two sentences, a text button to skip and a
+  // filled button for Next, which waits until the step is done.
+  let lessonMode = false;
+  let lView = null;
+  const lCount = el("p", { class: "lbl-lesson-count" });
+  const lTitle = el("h2", { class: "lbl-lesson-title" });
+  const lText = el("p", { class: "lbl-lesson-text" });
+  const lNext = el("button", { type: "button", class: "lbl-filled", onclick: () => hooks.lessonNext?.() }, "Next");
+  const lSkip = el("button", { type: "button", class: "lbl-textbtn", onclick: () => hooks.lessonSkip?.() }, "Skip tutorial");
+  const lesson = el("section", { class: "lbl-lesson", "aria-label": "Lesson", hidden: true }, lCount, lTitle, lText, el("div", { class: "lbl-lesson-actions" }, lSkip, lNext));
+  // Above the bar on a narrow window, whatever height the bar wraps to.
+  function placeLesson() {
+    const narrow = (window.innerWidth || 1000) < 760;
+    const r = bar.getBoundingClientRect();
+    lesson.style.bottom = narrow && r.height ? `${Math.round(window.innerHeight - r.top + 8)}px` : "";
+  }
+  window.addEventListener("resize", placeLesson);
+  function showLesson(view) {
+    lView = view;
+    lessonMode = Boolean(view);
+    lesson.hidden = !view;
+    if (state) update(state);
+    if (!view) {
+      bRedeal.classList.remove("lbl-point");
+      return;
+    }
+    lCount.textContent = `${view.index + 1} of ${view.count}`;
+    lTitle.textContent = view.title;
+    lText.textContent = view.text;
+    lesson.dataset.kind = view.kind;
+    lNext.disabled = isBusy || !view.done;
+    placeLesson();
+    lNext.textContent = view.last ? "Play" : "Next";
+    bRedeal.classList.toggle("lbl-point", view.pointAt === "redeal");
+  }
+
   // No game yet: the strips stay hidden until the first deal (the menu is all there is).
-  const layer = el("div", { class: "lbl-ui lbl-idle" }, hud, hintBox, end, bar, sr);
+  const layer = el("div", { class: "lbl-ui lbl-idle" }, hud, hintBox, lesson, end, bar, sr);
   root.append(layer);
 
   // ---- the tutorial -----------------------------------------------------------
@@ -214,7 +286,6 @@ export function createUi(root, hooks) {
         if (b.type === "p") return el("p", {}, ...spansToNodes(b.spans, showPage));
         return el(b.type, {}, ...b.items.map((it) => el("li", {}, ...spansToNodes(it, showPage))));
       }),
-      pageNote(key, state?.options) ? el("p", {}, pageNote(key, state?.options)) : null,
       el(
         "div",
         { class: "lbl-row" },
@@ -237,24 +308,38 @@ export function createUi(root, hooks) {
     tut.open();
   }
   function checkTutorial() {
-    if (!state || openDialog) return;
+    if (!state || openDialog || lessonMode) return;
     const key = duePage(prev, state, seen, { king: Boolean(state.options?.king) });
     if (key) showPage(key);
   }
 
   // ---- help -------------------------------------------------------------------
+  // A game in progress cannot be kept while the lessons use the table: the lessons end with this deal dealt afresh.
+  const inProgress = () => Boolean(!lessonMode && state && state.prompt === "play" && state.moves > 0);
+  const yesLeave = button("Yes, leave this game", null, "lbl-danger");
+  const noLeave = button("Keep playing", null, "lbl-quiet");
+  const confirmLeave = el("div", { class: "lbl-confirm", hidden: true, role: "alert" }, el("p", {}, "Leave the game in progress? The lessons end with this deal dealt afresh."), el("div", { class: "lbl-row" }, yesLeave, noLeave));
   function openHelp() {
+    confirmLeave.hidden = true;
     const help = dialog("Help", "help");
     help.body.append(
-      el("p", {}, "Move the top card of a fan onto its own suit, one rank higher, or home. Read a page again:"),
+      el("p", {}, "Move the top card of a fan onto its own suit, one rank higher, or home. Read about an option:"),
       el("ul", { class: "lbl-plain" }, ...pages.map((p) => el("li", {}, button(p.title, () => { help.close(); showPage(p.key, { fromHelp: true }); }, "lbl-quiet lbl-wide")))),
       el(
         "div",
         { class: "lbl-row" },
-        button("Show the tutorial again", () => { seen.clear(); persist(); help.close(); checkTutorial(); }, "lbl-quiet"),
+        button("Play the lessons again", () => {
+          if (inProgress() && confirmLeave.hidden) {
+            confirmLeave.hidden = false;
+            yesLeave.focus();
+          } else if (!inProgress()) { help.close(); hooks.startLessons?.(); }
+        }, "lbl-quiet"),
         button("Close", () => help.close(), "", { "data-first": true }),
       ),
+      confirmLeave,
     );
+    yesLeave.onclick = () => { help.close(); hooks.startLessons?.(); };
+    noLeave.onclick = () => { confirmLeave.hidden = true; };
     help.onclose = () => help.node.remove();
     help.open();
   }
@@ -321,7 +406,6 @@ export function createUi(root, hooks) {
     seedInput.addEventListener("input", () => {
       if (!seedMsg.hidden) checkSeed();
     });
-    const inProgress = () => Boolean(state && state.prompt === "play" && state.moves > 0);
     const confirmBox = el("div", { class: "lbl-confirm", hidden: true, role: "alert" }, el("p", {}, "Leave the game in progress and deal a new one?"));
     function start() {
       if (!checkSeed()) {
@@ -372,15 +456,18 @@ export function createUi(root, hooks) {
       );
     }
     draw();
-    // The same aids as in Settings, here too (the same stored settings), and first: a new
+    // The music and the aids as in Settings, here too (the same stored settings), and first: a new
     // player changes these far more often than the rules.
+    const sound = el("fieldset", { class: "lbl-set" }, el("legend", {}, "Sound"),
+      check("lbl-n-music", "Music", "Old French folk songs, one after another. Also the music button at the top.", "music"),
+    );
     const aids = el("fieldset", { class: "lbl-set" }, el("legend", {}, "Aids"),
       check("lbl-n-hints", "Hints", "Shows the Hint button.", "hints"),
       check("lbl-n-hl", "Highlight legal targets", "Lights the places the chosen card may go.", "highlight"),
       check("lbl-n-home", "Play cards home automatically", "A card that can go home goes at once, with no click.", "autoHome"),
       check("lbl-n-moves", "Count moves", "Shows the move count.", "showMoves"),
     );
-    d.body.append(aids, form, confirmBox, el("div", { class: "lbl-row lbl-actions" }, go, first ? null : button("Cancel", () => d.close(), "lbl-quiet")));
+    d.body.append(sound, aids, form, confirmBox, el("div", { class: "lbl-row lbl-actions" }, go, first ? null : button("Cancel", () => d.close(), "lbl-quiet")));
     d.onclose = () => d.node.remove();
     if (seed != null) checkSeed(); // a bad number from a shared link is said, not dropped
     d.open();
@@ -388,7 +475,7 @@ export function createUi(root, hooks) {
 
   // ---- state -------------------------------------------------------------------
   function applyHintsSetting() {
-    bHint.hidden = !prefs.settings.hints;
+    bHint.hidden = !prefs.settings.hints || lessonMode;
     sMoves.node.hidden = !prefs.settings.showMoves;
     if (!prefs.settings.hints) hideHint();
   }
@@ -405,7 +492,7 @@ export function createUi(root, hooks) {
     sMoves.value.textContent = String(next.moves);
     const playing = next.prompt === "play";
     set(bUndo, next.undoable);
-    set(bHint, playing);
+    set(bHint, playing && !lessonMode);
     set(bRedeal, playing && next.legal.includes("redeal"));
     bRedeal.textContent = `Redeal (${next.redeals_left})`;
     // Lit only when it is the one thing left to do: the engine offers a redeal when no other move exists.
@@ -413,14 +500,14 @@ export function createUi(root, hooks) {
     bRedeal.classList.toggle("lbl-ready", ready);
     bRedeal.title = ready ? "No other move is left: gather the cards and deal again" : "";
     applyHintsSetting();
-    if (next.hint && prefs.settings.hints && playing) {
+    if (next.hint && prefs.settings.hints && playing && !lessonMode) {
       const t = hintText(next.hint, next);
       hintDo.textContent = t.do;
       hintWhy.textContent = t.why;
       hintBox.hidden = false;
     } else hideHint();
-    end.hidden = playing;
-    if (!playing) {
+    end.hidden = playing || lessonMode;
+    if (!playing && !lessonMode) {
       endTitle.textContent = next.prompt === "won" ? "All 52 cards are home." : "No move is left.";
       endText.textContent = next.prompt === "won" ? `Well played, in ${next.moves} moves.` : `${home} of 52 cards are home. Undo a move, or try again.`;
       if (lastPrompt === "play") (end.querySelector("[data-first]"))?.focus();
@@ -436,10 +523,18 @@ export function createUi(root, hooks) {
   function busy(on) {
     isBusy = Boolean(on);
     layer.setAttribute("aria-busy", String(isBusy));
+    lNext.disabled = isBusy || !lView?.done;
     if (state) update(state);
   }
 
   applyHintsSetting();
   musicState(null);
-  return { update: (s) => update(s), music: musicState, settings: settingsNow, busy, openMenu: (o) => openNewGame(o), showPage: (k, o) => showPage(k, o) };
+  return { update: (s) => update(s), music: musicState, settings: settingsNow, busy, openMenu: (o) => openNewGame(o), showPage: (k, o) => showPage(k, o),
+    lesson: showLesson,
+    lessonsSeen: () => seen.has(LESSONS_KEY),
+    markLessonsSeen() {
+      seen.add(LESSONS_KEY);
+      persist();
+    },
+  };
 }

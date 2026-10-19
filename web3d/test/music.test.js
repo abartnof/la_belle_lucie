@@ -119,3 +119,30 @@ test("without any sources, or no audio element, it does nothing and never throws
   music.setOn(false);
   assert.equal(music.nowPlaying(), null);
 });
+
+test("next skips to the following track at once, and keeps playing only if on", async () => {
+  const { world, music } = rig();
+  music.setOn(true);
+  await tick();
+  music.next();
+  await tick();
+  assert.match(world.audio.src, /02_ratapataplan/);
+  assert.equal(world.audio.paused, false);
+  music.setOn(false);
+  music.next();
+  await tick();
+  assert.match(world.audio.src, /03_margoton/);
+  assert.equal(world.audio.paused, true);
+  assert.equal(music.nowPlaying().title, TRACKS[2].title);
+});
+
+test("a paused track resumes where it was, not from the start", async () => {
+  const { world, music } = rig();
+  music.setOn(true);
+  await tick();
+  const src = world.audio.src;
+  music.setOn(false);
+  music.setOn(true);
+  await tick();
+  assert.equal(world.audio.src, src);
+});

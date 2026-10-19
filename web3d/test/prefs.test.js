@@ -24,7 +24,7 @@ test("round trip, and odd values fall back to defaults", () => {
   const p = loadPrefs(store);
   p.settings = { ...p.settings, hints: false, table: "grain", faces: "jumbo", speed: "instant" };
   p.rules = 37;
-  p.seen = ["table", "redeal"];
+  p.seen = ["lessons", "draw"];
   savePrefs(store, p);
   const q = loadPrefs(store);
   assert.deepEqual(q, p);
@@ -35,6 +35,14 @@ test("round trip, and odd values fall back to defaults", () => {
   assert.deepEqual(r.seen, ["king"]);
   store.setItem("la-belle-lucie.prefs", "{not json");
   assert.deepEqual(loadPrefs(store).settings, DEFAULTS);
+});
+
+test("the lessons key is kept, and a store from before the lessons (old page keys) loads without it", () => {
+  const store = memory();
+  store.setItem("la-belle-lucie.prefs", JSON.stringify({ v: 1, seen: ["table", "foundations", "building", "check", "redeal"] }));
+  assert.ok(!loadPrefs(store).seen.includes("lessons"));
+  store.setItem("la-belle-lucie.prefs", JSON.stringify({ v: 1, seen: ["lessons"] }));
+  assert.deepEqual(loadPrefs(store).seen, ["lessons"]);
 });
 
 test("reduced motion starts the speed at instant, unless a speed was kept", () => {

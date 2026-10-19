@@ -95,6 +95,16 @@ export function createMusic({ sources = {}, doc = globalThis.document, makeAudio
       else audio?.pause();
       tell();
     },
+    // The next track, now (a pause stays a pause).
+    next() {
+      if (!tracks.length) return;
+      at = (at + 1) % tracks.length;
+      if (audio) {
+        load();
+        if (on) play();
+      }
+      tell();
+    },
     isOn: () => on,
     nowPlaying: state,
     onChange(fn) {

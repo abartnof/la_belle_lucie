@@ -34,12 +34,15 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
   --md-sys-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
   --md-sys-shape-small: 8px; --md-sys-shape-full: 999px;
   --md-sys-motion-standard: cubic-bezier(0.2, 0, 0, 1); --md-sys-motion-short3: 150ms;
+  --md-sys-color-primary: #0a6cf0; --md-sys-color-on-primary: #ffffff; --md-sys-elevation-2: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+  --md-sys-shape-medium: 12px;
   --md-ref-typeface: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 @media (prefers-color-scheme: dark) {
   .lbl-ui {
     --md-sys-color-surface-container-low: #1d1d20; --md-sys-color-on-surface: #e3e2e6; --md-sys-color-on-surface-variant: #c5c7cb;
     --md-sys-color-outline-variant: #46484c; --md-sys-color-secondary-container: #3f4245; --md-sys-color-on-secondary-container: #e1e3e7;
+    --md-sys-color-primary: #4d9bff; --md-sys-color-on-primary: #00315f;
   }
 }
 .lbl-hud {
@@ -76,7 +79,25 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .lbl-iconbtn:focus-visible::after, .lbl-iconbtn:active::after { opacity: 0.1; }
 .lbl-iconbtn svg { position: relative; z-index: 1; width: 24px; height: 24px; fill: currentColor; }
 .lbl-iconbtn .lbl-slash { display: none; }
-.lbl-iconbtn[aria-pressed="false"] .lbl-slash { display: inline; }
+.lbl-music-toggle[aria-pressed="false"] .lbl-slash { display: inline; }
+/* The player: a tonal pill that opens sideways (emphasized decelerate, 400ms) from the note. */
+.lbl-music { display: flex; align-items: center; border-radius: var(--md-sys-shape-full); transition: background-color 200ms var(--md-sys-motion-standard), box-shadow 200ms var(--md-sys-motion-standard); }
+.lbl-music.lbl-open { background: var(--md-sys-color-surface-container-low); box-shadow: var(--md-sys-elevation-1); }
+.lbl-music.lbl-open .lbl-music-toggle::before { box-shadow: none; background: var(--md-sys-color-secondary-container); }
+.lbl-music-body { display: grid; grid-template-columns: 0fr; transition: grid-template-columns 400ms cubic-bezier(0.05, 0.7, 0.1, 1); }
+.lbl-open .lbl-music-body { grid-template-columns: 1fr; }
+.lbl-music-inner { display: flex; align-items: center; min-width: 0; overflow: hidden; }
+.lbl-music-title {
+  min-width: 0; max-width: 13rem; padding: 0 4px 0 2px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: 0.1px; color: var(--md-sys-color-on-surface);
+}
+/* A standard (flat) icon button inside the player: no container of its own, only the state layer. */
+.lbl-iconbtn.lbl-flat { flex: none; color: var(--md-sys-color-on-surface-variant); }
+.lbl-iconbtn.lbl-flat::before { display: none; }
+.lbl-iconbtn.lbl-flat::after { inset: 4px; }
+.lbl-music-play .lbl-playing, .lbl-music-play .lbl-stopped { display: none; }
+.lbl-music-play .lbl-is-playing .lbl-playing { display: inline; }
+.lbl-music-play svg:not(.lbl-is-playing) .lbl-stopped { display: inline; }
 
 .lbl-bar {
   position: absolute; left: 8px; right: 8px; bottom: 8px; margin: 0 auto; width: max-content; max-width: calc(100% - 16px);
@@ -166,3 +187,37 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 @media (prefers-color-scheme: dark) { .lbl-btn.lbl-primary { color: #0b0b0b; } }
 /* The menu's Deal and Cancel stay in view however long the options run. */
 .lbl-dialog .lbl-actions { position: sticky; bottom: -16px; margin: 0 -18px -16px; padding: 10px 18px; background: var(--lbl-bg); border-top: 1px solid var(--lbl-line); }
+
+/* The lesson panel: a Material 3 elevated card at the right of the table, vertically centred (above the
+   bar on a narrow window). Its width is what main.js leaves out of the table's frame. A filled button
+   (Next, disabled until the step is done) and a text button (Skip tutorial). */
+.lbl-lesson {
+  position: absolute; top: 50%; right: 12px; transform: translateY(-50%); width: 19rem; max-width: calc(100% - 24px); box-sizing: border-box;
+  padding: 16px 16px 12px; background: var(--md-sys-color-surface-container-low); color: var(--md-sys-color-on-surface);
+  border-radius: var(--md-sys-shape-medium); box-shadow: var(--md-sys-elevation-2); pointer-events: auto; font-family: var(--md-ref-typeface);
+}
+.lbl-lesson[data-kind="done"] { border-left: 5px solid var(--md-sys-color-primary); }
+.lbl-lesson[data-kind="reaction"] { border-left: 5px solid var(--lbl-danger); }
+.lbl-lesson-count { margin: 0 0 4px; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.5px; color: var(--md-sys-color-on-surface-variant); font-variant-numeric: tabular-nums; }
+.lbl-lesson-title { margin: 0 0 8px; font-size: 22px; line-height: 28px; font-weight: 400; }
+.lbl-lesson-text { margin: 0 0 12px; font-size: 14px; line-height: 20px; letter-spacing: 0.25px; color: var(--md-sys-color-on-surface-variant); }
+.lbl-lesson-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.lbl-filled, .lbl-textbtn {
+  box-sizing: border-box; height: 40px; min-width: 48px; padding: 0 24px; border: 0; border-radius: var(--md-sys-shape-full); cursor: pointer;
+  font: 500 14px/20px var(--md-ref-typeface); letter-spacing: 0.1px; position: relative;
+  transition: background-color var(--md-sys-motion-short3) var(--md-sys-motion-standard), box-shadow var(--md-sys-motion-short3) var(--md-sys-motion-standard);
+}
+.lbl-filled { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+.lbl-filled:not(:disabled):hover { box-shadow: var(--md-sys-elevation-1); filter: brightness(1.08); }
+.lbl-filled:disabled { background: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent); color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent); cursor: default; }
+.lbl-textbtn { background: transparent; color: var(--md-sys-color-on-surface-variant); padding: 0 12px; }
+.lbl-textbtn:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface-variant) 8%, transparent); }
+/* The Redeal button, pointed at by the lesson: a pulse of the focus blue around it. */
+.lbl-btn.lbl-point:not(:disabled) { outline: 3px solid var(--lbl-focus-blue); outline-offset: 4px; animation: lbl-point 1.2s ease-in-out infinite; }
+@keyframes lbl-point { 50% { outline-offset: 8px; outline-color: transparent; } }
+@media (max-width: 759px) {
+  .lbl-lesson { top: auto; right: 8px; left: 8px; transform: none; width: auto; max-width: none; margin: 0 auto; padding: 10px 12px 8px; }
+  .lbl-lesson-title { font-size: 16px; line-height: 22px; margin-bottom: 4px; }
+  .lbl-lesson-text { margin-bottom: 8px; }
+}
+.lbl-idle .lbl-lesson { display: none; }

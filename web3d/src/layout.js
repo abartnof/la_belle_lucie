@@ -144,7 +144,7 @@ export function layout(state, aspect, { margins = MARGINS, spread = null } = {})
   // The fit depends only on the fan count, the aspect, the margins and where each
   // row ends (not on which fan is spread, nor on where the cards lie): it is
   // costly, so it is kept.
-  const key = `${fans.length}|${aspect}|${margins.top}|${margins.bottom}|${margins.side}|${rights.join(",")}`;
+  const key = `${fans.length}|${aspect}|${margins.top}|${margins.bottom}|${margins.side}|${margins.left ?? ""}|${margins.right ?? ""}|${rights.join(",")}`;
   let camera = fitMemo.get(key);
   if (!camera) {
     camera = fitCamera(points, aspect, margins);
@@ -202,7 +202,11 @@ export function fitCamera(points, aspect, margins = MARGINS, { pitch = 80, maxDi
   const dir = [0, Math.sin(pr), Math.cos(pr)];
   const winLo = -1 + 2 * margins.bottom;
   const winHi = 1 - 2 * margins.top;
-  const winX = 1 - 2 * margins.side;
+  // Left and right default to `side`; the content is centred in what they leave.
+  const winL = -1 + 2 * (margins.left ?? margins.side);
+  const winR = 1 - 2 * (margins.right ?? margins.side);
+  const centreX = (winL + winR) / 2;
+  const winW = winR - winL;
   const centre = (winLo + winHi) / 2;
   const put = (d, fov, tx, tz) => ({ eye: [tx + d * dir[0], d * dir[1], tz + d * dir[2]], at: [tx, 0, tz], fov });
   function at(d, fov) {
@@ -221,9 +225,9 @@ export function fitCamera(points, aspect, margins = MARGINS, { pitch = 80, maxDi
         zc = z;
       }
       const t = Math.tan((fov * Math.PI) / 360);
-      tx += ((minX + maxX) / 2) * zc * t * aspect;
+      tx += ((minX + maxX) / 2 - centreX) * zc * t * aspect;
       tz -= (((minY + maxY) / 2 - centre) * zc * t) / Math.sin(pr);
-      if (k === 11) return { cam: put(d, fov, tx, tz), fits: maxX - minX <= 2 * winX && maxY - minY <= winHi - winLo, spanX: maxX - minX, spanY: maxY - minY };
+      if (k === 11) return { cam: put(d, fov, tx, tz), fits: maxX - minX <= winW && maxY - minY <= winHi - winLo, spanX: maxX - minX, spanY: maxY - minY };
     }
     return null;
   }

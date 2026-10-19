@@ -31,7 +31,7 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL = ("file:", "data:", "blob:")
 SIZES = [("desktop", 1280, 720, False), ("phone", 390, 844, True)]
-SEEN = '["table","foundations","building","check","redeal","draw","king"]'
+SEEN = '["lessons","draw","king"]'
 WAIT = 90_000
 
 
@@ -75,12 +75,20 @@ def run_size(browser, page_url, name, w, h, touch, shots, problems, requests):
     if len(state["fans"]) < 2 or sum(len(f) for f in state["fans"]) != 52:
         problems.append(f"{name}: a new deal should show 52 cards in fans, got {state['fans']!r}")
     page.wait_for_timeout(500)
-    if not page.evaluate("window.lbl.music.isOn()") or page.get_attribute(".lbl-iconbtn", "aria-pressed") != "true":
+    if not page.evaluate("window.lbl.music.isOn()") or page.get_attribute(".lbl-music-toggle", "aria-pressed") != "true":
         problems.append(f"{name}: the music should be on by default")
-    page.click(".lbl-iconbtn")
-    if page.evaluate("window.lbl.music.isOn()") or page.get_attribute(".lbl-iconbtn", "aria-pressed") != "false":
-        problems.append(f"{name}: the speaker button should turn the music off")
-    page.click(".lbl-iconbtn")
+    page.click(".lbl-music-toggle")
+    if page.get_attribute(".lbl-music-toggle", "aria-expanded") != "true":
+        problems.append(f"{name}: the music button should open the player")
+    title = page.evaluate("window.lbl.music.nowPlaying().title")
+    page.click(".lbl-music-next")
+    if page.evaluate("window.lbl.music.nowPlaying().title") == title:
+        problems.append(f"{name}: next should change the song")
+    page.click(".lbl-music-play")
+    if page.evaluate("window.lbl.music.isOn()") or page.get_attribute(".lbl-music-play", "aria-label") != "Play the music":
+        problems.append(f"{name}: pause should pause the music")
+    page.click(".lbl-music-play")
+    page.click(".lbl-music-toggle")
     png = page.screenshot(path=str(shots / f"table-{name}-{w}x{h}.png")) if shots else page.screenshot()
     if blank(png):
         problems.append(f"{name}: the table rendered blank")

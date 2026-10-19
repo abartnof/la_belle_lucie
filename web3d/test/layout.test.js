@@ -231,3 +231,35 @@ test("the camera fit is memoised: a spread alone never refits, and the result eq
     assert.deepEqual(lay.camera, fitCamera(lay.points, a, m));
   }
 });
+
+test("left and right margins default to side; unequal ones centre the table in the window they leave", () => {
+  const st = dealt(5);
+  const sym = { top: 0.07, bottom: 0.05, side: 0.02 };
+  assert.deepEqual(layout(st, 16 / 9, { margins: { ...sym, left: 0.02, right: 0.02 } }).camera, layout(st, 16 / 9, { margins: sym }).camera);
+  const right = { ...sym, right: 0.3 };
+  const lay = layout(st, 16 / 9, { margins: right });
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const p of lay.points) {
+    const nx = project(lay.camera, 16 / 9, p)[0];
+    lo = Math.min(lo, nx);
+    hi = Math.max(hi, nx);
+  }
+  assert.ok(lo >= -1 + 2 * 0.02 - 1e-6, `left ${lo}`);
+  assert.ok(hi <= 1 - 2 * 0.3 + 1e-6, `right ${hi}`);
+  assert.ok(Math.abs((lo + hi) / 2 - (-1 + 2 * 0.02 + 1 - 2 * 0.3) / 2) < 0.02, "centred in the window left");
+});
+
+test("the fit memo keys on left and right", async () => {
+  const { fitStats } = await import("../src/layout.js");
+  const st = dealt(6);
+  const m = { top: 0.07, bottom: 0.05, side: 0.02 };
+  layout(st, 16 / 9, { margins: m });
+  const n = fitStats.fits;
+  layout(st, 16 / 9, { margins: { ...m, right: 0.25 } });
+  assert.equal(fitStats.fits, n + 1);
+  layout(st, 16 / 9, { margins: { ...m, right: 0.25 } });
+  assert.equal(fitStats.fits, n + 1);
+  layout(st, 16 / 9, { margins: { ...m, left: 0.25 } });
+  assert.equal(fitStats.fits, n + 2);
+});
