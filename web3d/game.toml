@@ -7,3 +7,10 @@ output = "la-belle-lucie.html"
 crate = "la-belle-lucie-wasm"
 # 5 MB is a guideline for modesty, not a hard limit: over it, the build warns.
 guideline_bytes = 5242880
+
+# The soundtrack: ten tracks inlined as data URIs, {stem: "data:audio/mp4;base64,..."}.
+[[assets]]
+placeholder = "/*MUSIC*/"
+path = "audio"
+kind = "images"
+count = 10

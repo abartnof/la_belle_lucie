@@ -25,14 +25,58 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .lbl-ui [hidden], .lbl-dialog [hidden] { display: none !important; }
 .lbl-sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
+/* The HUD is Material 3: elevated assist chips for the figures and a toggle icon
+   button for the music, on a neutral (grey) tonal palette; only the focus ring is
+   the project's one blue. Tokens are named as Material 3 names them. */
+.lbl-ui {
+  --md-sys-color-surface-container-low: #f3f3f5; --md-sys-color-on-surface: #1b1b1f; --md-sys-color-on-surface-variant: #46484c;
+  --md-sys-color-outline-variant: #c5c7cb; --md-sys-color-secondary-container: #dfe1e5; --md-sys-color-on-secondary-container: #1a1c1e;
+  --md-sys-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  --md-sys-shape-small: 8px; --md-sys-shape-full: 999px;
+  --md-sys-motion-standard: cubic-bezier(0.2, 0, 0, 1); --md-sys-motion-short3: 150ms;
+  --md-ref-typeface: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  .lbl-ui {
+    --md-sys-color-surface-container-low: #1d1d20; --md-sys-color-on-surface: #e3e2e6; --md-sys-color-on-surface-variant: #c5c7cb;
+    --md-sys-color-outline-variant: #46484c; --md-sys-color-secondary-container: #3f4245; --md-sys-color-on-secondary-container: #e1e3e7;
+  }
+}
 .lbl-hud {
   position: absolute; top: 8px; left: 8px; right: 8px; margin: 0 auto; width: max-content; max-width: calc(100% - 16px);
-  display: flex; flex-wrap: wrap; gap: 4px 14px; justify-content: center; list-style: none; padding: 6px 12px;
-  background: var(--lbl-bg); border: 1px solid var(--lbl-line); border-radius: 10px; box-shadow: var(--lbl-shadow);
-  pointer-events: auto; font-variant-numeric: tabular-nums;
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; align-items: center; list-style: none; padding: 0;
+  pointer-events: auto; font-variant-numeric: tabular-nums; font-family: var(--md-ref-typeface);
 }
-.lbl-k { color: var(--lbl-mute); }
+/* Assist chip, elevated: 32dp high, 8dp corners, label-large (14/20, 500, 0.1 tracking). */
+.lbl-stat {
+  display: inline-flex; align-items: center; gap: 6px; box-sizing: border-box; height: 32px; padding: 0 12px;
+  background: var(--md-sys-color-surface-container-low); color: var(--md-sys-color-on-surface); border-radius: var(--md-sys-shape-small);
+  box-shadow: var(--md-sys-elevation-1); font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: 0.1px;
+}
+.lbl-k { color: var(--md-sys-color-on-surface-variant); }
 .lbl-v { font-weight: 700; }
+.lbl-tool { display: flex; }
+/* Toggle icon button, tonal: 40dp container in a 48dp touch target, 24dp icon, state layers at 8% (hover) and 10% (focus, press). */
+.lbl-iconbtn {
+  position: relative; box-sizing: border-box; width: 48px; height: 48px; padding: 0; border: 0; background: transparent; cursor: pointer;
+  display: grid; place-items: center; color: var(--md-sys-color-on-surface-variant); border-radius: var(--md-sys-shape-full);
+  -webkit-tap-highlight-color: transparent;
+}
+.lbl-iconbtn::before {
+  content: ""; position: absolute; inset: 4px; border-radius: var(--md-sys-shape-full); background: var(--md-sys-color-surface-container-low);
+  box-shadow: var(--md-sys-elevation-1); transition: background-color var(--md-sys-motion-short3) var(--md-sys-motion-standard);
+}
+.lbl-iconbtn[aria-pressed="true"] { color: var(--md-sys-color-on-secondary-container); }
+.lbl-iconbtn[aria-pressed="true"]::before { background: var(--md-sys-color-secondary-container); }
+.lbl-iconbtn::after {
+  content: ""; position: absolute; inset: 4px; border-radius: var(--md-sys-shape-full); background: currentColor; opacity: 0;
+  transition: opacity var(--md-sys-motion-short3) var(--md-sys-motion-standard);
+}
+.lbl-iconbtn:hover::after { opacity: 0.08; }
+.lbl-iconbtn:focus-visible::after, .lbl-iconbtn:active::after { opacity: 0.1; }
+.lbl-iconbtn svg { position: relative; z-index: 1; width: 24px; height: 24px; fill: currentColor; }
+.lbl-iconbtn .lbl-slash { display: none; }
+.lbl-iconbtn[aria-pressed="false"] .lbl-slash { display: inline; }
 
 .lbl-bar {
   position: absolute; left: 8px; right: 8px; bottom: 8px; margin: 0 auto; width: max-content; max-width: calc(100% - 16px);

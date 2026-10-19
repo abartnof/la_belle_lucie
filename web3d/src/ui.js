@@ -29,6 +29,24 @@ function el(tag, attrs = {}, ...kids) {
   return node;
 }
 
+// A 24-unit Material-style icon button's picture (our own drawing: a note, and a slash when the music is off).
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svg(paths) {
+  const node = document.createElementNS(SVG_NS, "svg");
+  node.setAttribute("viewBox", "0 0 24 24");
+  node.setAttribute("aria-hidden", "true");
+  node.setAttribute("focusable", "false");
+  for (const [cls, d] of paths) {
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("class", cls);
+    node.append(path);
+  }
+  return node;
+}
+const NOTE = "M12 3v10.55a4 4 0 1 0 2 3.45V7h4V3h-6z";
+const SLASH = "M4.3 3 3 4.3 19.7 21 21 19.7z";
+
 function spansToNodes(spans, openPage) {
   return spans.map((s) => {
     if (s.page) return el("button", { type: "button", class: "lbl-link", onclick: () => openPage(s.page) }, s.text);
@@ -141,7 +159,15 @@ export function createUi(root, hooks) {
   const sRedeals = stat("Redeals remaining");
   const sDraw = stat("Draw");
   const sMoves = stat("Moves");
-  const hud = el("ul", { class: "lbl-hud", "aria-label": "Game status" }, sHome.node, sRedeals.node, sDraw.node, sMoves.node);
+  // The music: a Material 3 toggle icon button at the end of the HUD.
+  const bMusic = el("button", { type: "button", class: "lbl-iconbtn", "aria-pressed": "true", "aria-label": "Music", title: "Music", onclick: () => changed({ music: !prefs.settings.music }) }, svg([["lbl-note", NOTE], ["lbl-slash", SLASH]]));
+  function musicState(info) {
+    const on = prefs.settings.music;
+    bMusic.setAttribute("aria-pressed", String(on));
+    bMusic.title = on ? (info?.title ? `Music on: ${info.title}. Click to turn it off.` : "Music on. Click to turn it off.") : "Music off. Click to turn it on.";
+    bMusic.setAttribute("aria-label", on ? "Turn the music off" : "Turn the music on");
+  }
+  const hud = el("ul", { class: "lbl-hud", "aria-label": "Game status" }, sHome.node, sRedeals.node, sDraw.node, sMoves.node, el("li", { class: "lbl-tool" }, bMusic));
 
   const bUndo = button("Undo", () => hooks.undo());
   const bHint = button("Hint", () => hooks.hint());
@@ -239,6 +265,7 @@ export function createUi(root, hooks) {
     prefs.settings = { ...prefs.settings, ...patch };
     persist();
     applyHintsSetting();
+    musicState(null);
     hooks.settingsChanged?.(settingsNow());
   }
   function check(id, label, words, key) {
@@ -255,6 +282,7 @@ export function createUi(root, hooks) {
       check("lbl-s-hl", "Highlight legal targets", "Lights the places the chosen card may go.", "highlight"),
       check("lbl-s-home", "Play cards home automatically", "A card that can go home goes at once, with no click.", "autoHome"),
       check("lbl-s-moves", "Count moves", "Shows the move count.", "showMoves"),
+      check("lbl-s-music", "Music", "Old French folk songs, one after another. Also the speaker button at the top.", "music"),
       select("lbl-s-speed", "Animation", [["normal", "Normal"], ["instant", "Instant"]], "speed"),
       select("lbl-s-redeal", "Redeal animation", REDEAL_FX.map((id) => [id, id === "random" ? "Random" : id === "simple" ? "Simple" : EFFECT_NAMES[id]]), "redealFx", "How the cards are gathered and dealt again. Random picks a different one each time; Simple is the plain slide. Instant animation skips it."),
       select("lbl-s-faces", "Card faces", [["auto", "High-visibility"], ["classic", "Classic"], ["contrast", "Suit contrast"]], "faces", "High-visibility has large corner indices that stay readable where cards overlap. Suit contrast adds white-on-black clubs and white-on-red diamonds."),
@@ -412,5 +440,6 @@ export function createUi(root, hooks) {
   }
 
   applyHintsSetting();
-  return { update: (s) => update(s), settings: settingsNow, busy, openMenu: (o) => openNewGame(o), showPage: (k, o) => showPage(k, o) };
+  musicState(null);
+  return { update: (s) => update(s), music: musicState, settings: settingsNow, busy, openMenu: (o) => openNewGame(o), showPage: (k, o) => showPage(k, o) };
 }

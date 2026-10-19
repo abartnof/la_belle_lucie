@@ -11,7 +11,7 @@ On the development VM piquet's `.venv` has Playwright:
 Checks what only a browser can show, at a desktop size (1280x720) and a phone's (390x844,
 touch): that the page makes no network request (it is one file and must work offline),
 that nothing is written to the console in error, that the table renders (a canvas that is
-not blank; a screenshot of each size is kept in --shots), that clicking plays (a legal
+not blank; a screenshot of each size is kept in --shots), that the music is on by default and the speaker button toggles it, that clicking plays (a legal
 move from the state, made by clicking its card and then its target, changes the state),
 and that the keyboard reaches the table (arrow keys speak into the live region).
 The software-rendered WebGL of the VM is slow: the waits are long on purpose.
@@ -75,6 +75,12 @@ def run_size(browser, page_url, name, w, h, touch, shots, problems, requests):
     if len(state["fans"]) < 2 or sum(len(f) for f in state["fans"]) != 52:
         problems.append(f"{name}: a new deal should show 52 cards in fans, got {state['fans']!r}")
     page.wait_for_timeout(500)
+    if not page.evaluate("window.lbl.music.isOn()") or page.get_attribute(".lbl-iconbtn", "aria-pressed") != "true":
+        problems.append(f"{name}: the music should be on by default")
+    page.click(".lbl-iconbtn")
+    if page.evaluate("window.lbl.music.isOn()") or page.get_attribute(".lbl-iconbtn", "aria-pressed") != "false":
+        problems.append(f"{name}: the speaker button should turn the music off")
+    page.click(".lbl-iconbtn")
     png = page.screenshot(path=str(shots / f"table-{name}-{w}x{h}.png")) if shots else page.screenshot()
     if blank(png):
         problems.append(f"{name}: the table rendered blank")

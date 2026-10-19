@@ -24,6 +24,7 @@ export const DEFAULTS = Object.freeze({
   redealFx: "random",
   highlight: true,
   showMoves: true,
+  music: true,
 });
 
 export const CLASSIC = 4;
@@ -33,7 +34,7 @@ const isBool = (x) => typeof x === "boolean";
 function checked(kept, reducedMotion) {
   const k = kept && typeof kept === "object" ? kept : {};
   const out = { ...DEFAULTS };
-  for (const key of ["hints", "autoHome", "highlight", "showMoves"]) if (isBool(k[key])) out[key] = k[key];
+  for (const key of ["hints", "autoHome", "highlight", "showMoves", "music"]) if (isBool(k[key])) out[key] = k[key];
   if (TABLES.includes(k.table)) out.table = k.table;
   if (FACES.includes(k.faces)) out.faces = k.faces;
   if (REDEAL_FX.includes(k.redealFx)) out.redealFx = k.redealFx;

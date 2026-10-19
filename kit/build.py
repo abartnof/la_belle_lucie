@@ -65,7 +65,8 @@ KIT = Path(__file__).resolve().parent
 DEFAULT_ROOT = KIT.parent
 DEFAULT_CONFIG = "web3d/game.toml"
 KINDS = ("images", "json", "text")
-IMAGE_TYPES = {".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml"}
+# Images, and (la_belle_lucie) sound: a folder of either is inlined as data URIs.
+IMAGE_TYPES = {".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml", ".m4a": "audio/mp4"}
 
 
 @dataclass

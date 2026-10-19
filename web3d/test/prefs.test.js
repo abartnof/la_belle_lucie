@@ -121,3 +121,12 @@ test("seedProblem: empty is fine (random); anything else must be a whole number 
   for (const ok of ["", "  ", "0", "12", "4294967295", " 7 "]) assert.equal(seedProblem(ok), null, ok);
   for (const bad of ["abc", "-1", "1.5", "4294967296", "99999999999", "1e3"]) assert.match(seedProblem(bad), /whole number/, bad);
 });
+
+test("music is on by default, and an explicit off is kept (anything else is ignored)", () => {
+  assert.equal(DEFAULTS.music, true);
+  const store = (v) => ({ getItem: () => JSON.stringify({ v: 1, music: v }), setItem() {} });
+  assert.equal(loadPrefs(store(false)).settings.music, false);
+  assert.equal(loadPrefs(store(true)).settings.music, true);
+  assert.equal(loadPrefs(store("no")).settings.music, true);
+  assert.equal(loadPrefs({ getItem: () => null, setItem() {} }).settings.music, true);
+});

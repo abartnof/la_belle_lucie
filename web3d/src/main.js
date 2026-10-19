@@ -10,6 +10,7 @@ import { loadEngine } from "./engine.js";
 import { hashFor, parseHash } from "./hash.js";
 import { cardName } from "./layout.js";
 import { firstMenu } from "./menu-start.js";
+import { createMusic, TRACKS } from "./music.js";
 import { defaultStore, loadPrefs } from "./prefs.js";
 import { decide, targetsOf } from "./selection.js";
 import { createTable } from "./table.js";
@@ -155,11 +156,16 @@ export async function run(makeEngine) {
     settingsChanged(s) {
       settings = { ...settings, ...s };
       table.setSettings(settings);
+      music.setOn(settings.music !== false);
       if (state) paint();
     },
   });
   settings = { ...settings, ...ui.settings() };
   table.setSettings(settings);
+  // The soundtrack is on unless the player turned it off; the browser starts it at the first click or key.
+  const music = createMusic({ sources: typeof MUSIC_SOURCES !== "undefined" ? MUSIC_SOURCES : {}, start: Math.floor(Math.random() * TRACKS.length) });
+  music.onChange((info) => ui.music(info));
+  music.setOn(settings.music !== false);
 
   table.onClick((ev) => {
     if (!state || stopped) return;
@@ -192,7 +198,7 @@ export async function run(makeEngine) {
   ui.openMenu({ ...firstMenu(given, prefs), first: true });
 
   // For tests and the curious: a read-only window onto the page.
-  window.lbl = { ui, state: () => state, table, send: (c) => send(c), selected: () => sel, stopped: () => stopped };
+  window.lbl = { ui, music, state: () => state, table, send: (c) => send(c), selected: () => sel, stopped: () => stopped };
 }
 
 if (typeof document !== "undefined" && typeof WASM_BASE64 !== "undefined") {
