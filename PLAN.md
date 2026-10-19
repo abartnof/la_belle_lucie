@@ -17,6 +17,7 @@ Where things stand. Keep this current as work lands.
   casts a shadow and moves on Material 3 easing (`src/arrow.js`, `src/arrow-mesh.js`). One focus blue marks everything to
   look at or act on (lit Redeal, hint, chosen card, targets, focus); fans longer than three spread on
   hover, focus or tap. Faces: high-visibility by default, classic, or suit contrast.
+- Hint prose names the game's central tension: a card placed on a pile freezes everything under it until it moves again. The `do` sentence says what a move freezes (or that nothing under it is needed soon), the principle teaches the cost (`src/hints.js`).
 - Redeal plays one of seven animations (Random by default; a Settings choice, `redealFx`), each landing
   every card exactly on the engine's layout (`src/redeal-fx.js`, from the maintainer's demo).
 - Two independent code reviews (engine, page) were done; their verified findings are fixed.
