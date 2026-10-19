@@ -132,6 +132,8 @@ export async function run(makeEngine) {
 
   function send(command) {
     if (stopped) return;
+    // A redeal belongs to the redeal lesson: any other step is about something else.
+    if (lessonView && lessonView.id !== "redeal" && command.trim() === "redeal") return;
     if (animating) {
       announce(WAIT_WORDS);
       return;
@@ -146,15 +148,15 @@ export async function run(makeEngine) {
     if (command === "hint" && state.hint) announce(state.hint.card ? `Hint: move the ${cardName(state.hint.card)}.` : "Hint: take a redeal.");
   }
 
-  // The menu's Deal. A player who has not finished or skipped the lessons plays them first; the deal waits.
-  function newGame({ seed, rules }) {
+  // The menu's Deal. With the Tutorial box ticked the lessons come first and the deal waits.
+  function newGame({ seed, rules, tutorial = false }) {
     if (stopped) return;
     const deal = { seed: seed ?? randomSeed(), rules: rules ?? DEFAULT_RULES };
     if (lessons.active) {
       // The menu was used mid-lessons: leave them (unfinished, so they come again) and deal.
       pending = null;
       lessons.skip();
-    } else if (canLesson && !ui.lessonsSeen()) {
+    } else if (canLesson && tutorial) {
       startLessons(deal);
       return;
     }

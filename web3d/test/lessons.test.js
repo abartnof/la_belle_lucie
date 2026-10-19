@@ -48,20 +48,20 @@ test("win: done when the prompt is won", () => {
 
 test("the check: the free build completes it; the costly one reacts and does not", () => {
   const l = by("check");
-  const start = st({ home: [1, 0, 0, 0], fans: [["2S", "7H"], ["9C", "6H"], ["JD", "5H"]] });
+  const start = st({ home: [1, 0, 0, 0], fans: [["2S", "7H"], ["9C", "6H"], ["5H"]] });
   assert.equal(l.done(start), false);
   assert.equal(l.reaction(start), null);
-  const bad = st({ home: [1, 0, 0, 0], fans: [["2S", "7H", "6H"], ["9C"], ["JD", "5H"]] });
+  const bad = st({ home: [1, 0, 0, 0], fans: [["2S", "7H", "6H"], ["9C"], ["5H"]] });
   assert.equal(l.done(bad), false);
   const said = l.reaction(bad);
-  assert.match(said, /2♠ is shut in under the 6♥ and 7♥/);
+  assert.match(said, /2♠ is trapped under the 6♥ and 7♥/);
   assert.match(said, /seven hearts/);
   assert.match(said, /Undo/);
-  const good = st({ home: [1, 0, 0, 0], fans: [["2S", "7H"], ["9C", "6H", "5H"], ["JD"]] });
+  const good = st({ home: [1, 0, 0, 0], fans: [["2S", "7H"], ["9C", "6H", "5H"], []] });
   assert.equal(l.done(good), true);
   assert.equal(l.reaction(good), null);
   // Costly and then the free one on top: still the reaction, not done.
-  const both = st({ home: [1, 0, 0, 0], fans: [["2S", "7H", "6H", "5H"], ["9C"], ["JD"]] });
+  const both = st({ home: [1, 0, 0, 0], fans: [["2S", "7H", "6H", "5H"], ["9C"], []] });
   assert.equal(l.done(both), false);
   assert.ok(l.reaction(both));
 });
@@ -90,7 +90,7 @@ test("viewOf: task, then done, with the right words and no arrow once done or re
   assert.equal(d.arrow, null);
   assert.equal(d.text, home.doneText);
   assert.equal(viewOf(3, st({ legal: ["redeal"] })).pointAt, "redeal");
-  const r = viewOf(5, st({ home: [1, 0, 0, 0], fans: [["2S", "7H", "6H"], ["9C"], ["JD", "5H"]] }));
+  const r = viewOf(5, st({ home: [1, 0, 0, 0], fans: [["2S", "7H", "6H"], ["9C"], ["5H"]] }));
   assert.equal(r.kind, "reaction");
   assert.equal(r.arrow, null);
   assert.equal(r.done, false);
@@ -225,7 +225,7 @@ test("every lesson's intended moves, played on the real engine, complete it; the
       assert.equal(engine.state().legal.length, 2);
       move("6H", "7H");
       assert.equal(view.kind, "reaction");
-      assert.match(view.text, /2♠ is shut in under the 6♥ and 7♥/);
+      assert.match(view.text, /2♠ is trapped under the 6♥ and 7♥/);
       assert.equal(run.next(), false);
       play("undo");
       assert.equal(view.kind, "task");

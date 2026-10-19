@@ -28,7 +28,7 @@ function shutIn(state, top, under) {
   const run = state.fans[at].slice(facts.blockers.length, k + 1).reverse().map(cardName);
   const under_ = run.length > 1 ? `${run.slice(0, -1).join(", ")} and ${run.at(-1)}` : run[0];
   const name = cardName(card);
-  return `Now the ${name} is shut in under the ${under_}, though it is next in line for home. It stays there until ${num(facts.release)} ${SUIT_WORD[top[1]]} have gone home. Press Undo and try the other build.`;
+  return `Now the ${name} is trapped under the ${under_} until ${num(facts.release)} ${SUIT_WORD[top[1]]} are home. Press Undo and try the other build.`;
 }
 
 // step: { id, title, layout, text, doneText, arrow: [{ card, onto | home }] (tried in order; the first legal one is shown),
@@ -39,7 +39,7 @@ export const LESSONS = Object.freeze([
     title: "Build",
     layout: "3S 6H / KC 7H ; 0 0 0 0",
     text: "A top card may go onto another fan's top card if it is the same suit and one rank higher. Move the 6♥ onto the 7♥.",
-    doneText: "Built. The card beneath is free to move.",
+    doneText: "Built. The 3♠ beneath is free to move.",
     arrow: [{ card: "6H", onto: "7H" }],
     done: (s) => builtOn(s, "6H", "7H"),
   },
@@ -57,7 +57,7 @@ export const LESSONS = Object.freeze([
     title: "Only the top card moves",
     layout: "6H 9C / KS 7H / 3D TC ; 0 0 0 0",
     text: "The 6♥ is buried under the 9♣, and only a top card can move. Move the 9♣ onto the 10♣ first, then the 6♥ onto the 7♥.",
-    doneText: "Moving a card frees the one beneath it.",
+    doneText: "Moving the 9♣ freed the 6♥, and now the 6♥ fits the 7♥.",
     arrow: [{ card: "9C", onto: "TC" }, { card: "6H", onto: "7H" }],
     done: (s) => builtOn(s, "6H", "7H"),
   },
@@ -83,9 +83,9 @@ export const LESSONS = Object.freeze([
   {
     id: "check",
     title: "The check",
-    layout: "2S 7H / 9C 6H / JD 5H ; 1 0 0 0",
-    text: "Two builds are open. A card you build can only leave by going home, so ask what lies under the pile: one of these builds is free.",
-    doneText: "Free: nothing wanted lies under the 6♥. Before you build, always look under the pile.",
+    layout: "2S 7H / 9C 6H / 5H ; 1 0 0 0",
+    text: "Putting the 6♥ on the 7♥ would trap the 2♠, which is ready to go home. Make the other build: it traps nothing you need.",
+    doneText: "Good: only the 9♣ lies under the 6♥, and it is not needed for a long time. Before you build, look under the pile.",
     arrow: [],
     // The free build, and not after the costly one (that is a reaction).
     done: (s) => builtOn(s, "5H", "6H") && !builtOn(s, "6H", "7H"),

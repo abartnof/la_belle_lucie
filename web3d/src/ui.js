@@ -416,7 +416,12 @@ export function createUi(root, hooks) {
       }
       prefs.rules = code;
       persist();
-      const deal = { seed: parseSeed(seedInput.value), rules: code };
+      const deal = { seed: parseSeed(seedInput.value), rules: code, tutorial: tutorialBox.checked };
+      // Declined: it is not offered again (it can be asked for here, or in Help).
+      if (!deal.tutorial && !seen.has(LESSONS_KEY)) {
+        seen.add(LESSONS_KEY);
+        persist();
+      }
       d.locked = false;
       d.close();
       try {
@@ -458,7 +463,10 @@ export function createUi(root, hooks) {
     draw();
     // The music and the aids as in Settings, here too (the same stored settings), and first: a new
     // player changes these far more often than the rules.
-    const sound = el("fieldset", { class: "lbl-set" }, el("legend", {}, "Sound"),
+    // The lessons are on for a player who has not had them, and off once they have.
+    const tutorialBox = el("input", { type: "checkbox", id: "lbl-n-tutorial", checked: !seen.has(LESSONS_KEY) });
+    const sound = el("fieldset", { class: "lbl-set" }, el("legend", {}, "Start"),
+      el("div", { class: "lbl-field" }, el("label", { for: "lbl-n-tutorial" }, tutorialBox, " Tutorial: six short lessons first")),
       check("lbl-n-music", "Music", null, "music"),
     );
     const aids = el("fieldset", { class: "lbl-set" }, el("legend", {}, "Aids"),
@@ -493,10 +501,12 @@ export function createUi(root, hooks) {
     const playing = next.prompt === "play";
     set(bUndo, next.undoable);
     set(bHint, playing && !lessonMode);
-    set(bRedeal, playing && next.legal.includes("redeal"));
+    // In the lessons the redeal is for the redeal lesson alone.
+    const redealOk = playing && next.legal.includes("redeal") && (!lessonMode || lView?.id === "redeal");
+    set(bRedeal, redealOk);
     bRedeal.textContent = `Redeal (${next.redeals_left})`;
     // Lit only when it is the one thing left to do: the engine offers a redeal when no other move exists.
-    const ready = playing && next.legal.includes("redeal");
+    const ready = redealOk;
     bRedeal.classList.toggle("lbl-ready", ready);
     bRedeal.title = ready ? "No other move is left: gather the cards and deal again" : "";
     applyHintsSetting();

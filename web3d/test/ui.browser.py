@@ -271,9 +271,9 @@ def main() -> int:
         if page.locator("#lbl-n-hints").is_checked() or not page.locator("#lbl-n-home").is_checked():
             bad("settings: the New game menu should show the saved aids")
         # Music is the first thing in the menu, on by default; unchecking it is kept.
-        first_box = page.eval_on_selector(OPEN + " fieldset input", "(i) => i.id")
-        if first_box != "lbl-n-music" or not page.locator("#lbl-n-music").is_checked():
-            bad("new game: Music should be the first option, on by default")
+        boxes = page.eval_on_selector_all(OPEN + " fieldset input", "(l) => l.slice(0, 2).map((i) => i.id)")
+        if boxes != ["lbl-n-tutorial", "lbl-n-music"] or not page.locator("#lbl-n-music").is_checked():
+            bad("new game: Tutorial then Music should be the first options, Music on by default")
         page.locator("#lbl-n-music").uncheck()
         if page.evaluate("window.lbl.music.isOn()"):
             bad("new game: unchecking Music should stop it")
