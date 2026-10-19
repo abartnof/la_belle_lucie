@@ -27,9 +27,10 @@ import { createDeck, INKS } from "../../kit/js/deck.js";
 import { M3 } from "../../kit/js/easing.js";
 import { jumboTextures, largeTextHere } from "../../kit/js/faces.js";
 import { lying, slide } from "../../kit/js/kinematics.js";
+import { hopHeight } from "./motion.js";
 import { createScene } from "../../kit/js/scene.js";
 import { CARD as UNITS_CARD } from "../../kit/js/units.js";
-import { CYCLE_MS, arrowEnds, arrowOutline, phase } from "./arrow.js";
+import { CYCLE_MS, arrowEnds, arrowOutline, hopPeak, phase, sizeFor } from "./arrow.js";
 import { createArrowMesh } from "./arrow-mesh.js";
 import { backTexture, classicTextures } from "./classic.js";
 import { CARD, LIFT, MARGINS, SUITS, cardName, hitSlot, layout } from "./layout.js";
@@ -158,6 +159,16 @@ export function createTable(canvas, hooks = {}) {
   const textures = { faces: { ...faceSet(faceKind) }, back };
   const deck = createDeck(stage, textures);
 
+  // A card moving from one place to another rides above every card on the way.
+  const hop = (from, to, { ease, lift }) => {
+    const flat = slide(from, to, { ease, lift: 0 });
+    return (t) => {
+      const pose = flat(t);
+      pose.position.y += hopHeight(t, lift);
+      return pose;
+    };
+  };
+
   // ---- the cards ----------------------------------------------------------
   const entries = new Map(); // code -> { mesh, anim }
   for (const code of CODES) {
@@ -206,11 +217,12 @@ export function createTable(canvas, hooks = {}) {
     if (alpha < 0.03) {
       arrowSolid.hide();
     } else {
-      const { outline, params } = arrowOutline(arrow.ends, t, { tail: still ? 1 : 0.4, scale: alpha });
+      const { outline, params } = arrowOutline(arrow.ends, t, { tail: still ? 1 : 0.4, scale: alpha * sizeFor(Math.hypot(arrow.ends.to.x - arrow.ends.from.x, arrow.ends.to.z - arrow.ends.from.z)) });
       // Every point of it follows the flight's arc: up from the card it leaves, down onto
       // the middle of the one it lands on, so near the end its tip is lower than its tail.
       const { from, to } = arrow.ends;
-      const peak = Math.min(ARROW_Y, ARROW_LAND + 0.3 * Math.hypot(to.x - from.x, to.z - from.z)); // a short hop is a low one
+      const len = Math.hypot(to.x - from.x, to.z - from.z);
+      const peak = hopPeak(len, ARROW_LAND, ARROW_Y);
       const arc = (s) => ARROW_LAND + (peak - ARROW_LAND) * 4 * s * (1 - s);
       const ys = params.map((s) => arc(s) - (1 - alpha) * 0.6);
       // Its shadow lies on the surface below it, further towards the viewer and fainter the higher it is.
@@ -456,7 +468,7 @@ export function createTable(canvas, hooks = {}) {
       const from = { position: e.mesh.position.clone(), quaternion: e.mesh.quaternion.clone() };
       const delay = staggered ? Math.min(700, (rank.get(code) ?? 0) * 14) : 0;
       const lift = gentle ? 0 : staggered ? LIFT * 0.6 : LIFT;
-      e.anim = { start: now + delay, dur: gentle ? SPREAD_MS : MOVE_MS + (staggered ? 120 : 0), fn: slide(from, to, { ease: M3.standard, lift }), to, from };
+      e.anim = { start: now + delay, dur: gentle ? SPREAD_MS : MOVE_MS + (staggered ? 120 : 0), fn: hop(from, to, { ease: M3.standard, lift }), to, from };
     }
     dirty = true;
   }

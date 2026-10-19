@@ -30,6 +30,18 @@ export function arrowEnds(lay, hint) {
   return Math.hypot(to.x - from.x, to.z - from.z) < 0.5 ? null : { from, to };
 }
 
+// How big the arrow is for a path this long (cm): whole on a long run, smaller on
+// a short hop to the next pile, where a full-size head would be most of the path.
+export function sizeFor(len) {
+  return Math.min(1, Math.max(0.5, len / 24));
+}
+
+// The height (cm) the arrow reaches at the top of a hop of this length: a short
+// hop is a low one, and the climb stays gentle along the arrow's own length.
+export function hopPeak(len, base = 0.9, top = 5.2) {
+  return Math.min(top, base + 0.12 * len);
+}
+
 const BOW = 0.14; // of the length
 
 // The point (and unit direction) at t along the quadratic bow from a to b. The

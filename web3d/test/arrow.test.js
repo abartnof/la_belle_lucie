@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { arrowEnds, arrowOutline, curveAt, phase } from "../src/arrow.js";
+import { arrowEnds, arrowOutline, curveAt, hopPeak, phase, sizeFor } from "../src/arrow.js";
 import { layout } from "../src/layout.js";
 
 const near = (a, b, e = 1e-6) => Math.abs(a - b) < e;
@@ -103,4 +103,17 @@ test("the outline is one closed polygon with the tip on the path", () => {
   assert.ok(still.outline.some((q) => near(q[0], 0, 1.5) && near(q[1], 0, 1.5)));
   // at the very start there is only a head
   assert.ok(arrowOutline(ends, 0).outline.length >= 3);
+});
+
+test("a short hop between neighbouring piles gets a smaller, flatter arrow", () => {
+  assert.equal(sizeFor(60), 1);
+  assert.ok(sizeFor(10) < 1 && sizeFor(10) >= 0.5);
+  assert.ok(sizeFor(5) >= sizeFor(2));
+  // the climb along the arrow's own length stays gentle however short the hop
+  for (const d of [8, 10, 14, 30, 80]) {
+    const rise = hopPeak(d) - 0.9;
+    const slope = (4 * rise) / d;
+    assert.ok(slope <= 0.6, `d=${d} slope ${slope}`);
+  }
+  assert.ok(hopPeak(100) <= 5.2 + 1e-9);
 });

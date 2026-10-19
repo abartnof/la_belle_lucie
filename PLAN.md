@@ -13,7 +13,7 @@ Where things stand. Keep this current as work lands.
   settings (look and aids) and a new-game menu (rules, with sources, and a deal number).
 - `web3d/test/ui.browser.py` tests the UI in Chromium (tutorial, settings, new game, hints, undo/redeal, help, focus, reduced motion); Trefoil's pre-placed aces are on the foundations page.
 - New games always start at the New game menu: the page deals nothing on load (a hash only prefills the menu).
-- Hints draw an animated arrow from the source card to the target: one solid, toon-shaded, inked prism that
+- Hints draw an animated arrow from the source card to the target (smaller and lower on a short hop to a neighbouring pile; cards in play ride above every other card, `src/motion.js`): one solid, toon-shaded, inked prism that
   casts a shadow and moves on Material 3 easing (`src/arrow.js`, `src/arrow-mesh.js`). One focus blue marks everything to
   look at or act on (lit Redeal, hint, chosen card, targets, focus); fans longer than three spread on
   hover, focus or tap. Faces: high-visibility by default, classic, or suit contrast.
