@@ -40,6 +40,7 @@ Fan numbers are slots (0-based: `f0` is `fans[0]`), stable until a redeal. `send
 - `legal`: exactly the strings `send` accepts (without the `move ` prefix for moves,
   `draw ...` with it; `redeal`). `undo` and `hint` are always allowed and not listed.
 - `hint`: `{ "rule": id, "move": "f3>h" | "f3>f5" | "draw f2:1>f5" | "redeal", "card": "5S",
-  "onto": "6S" | null, "uncovers": "4S" | null }`. `rule` is one of `home`, `dig`, `uncover`,
+  "onto": "6S" | null, "uncovers": "4S" | null, "open": 3, "alt": null | { "move": "f1>f4", "card": "9C",
+  "onto": "TC", "uncovers": "2H" | null, "open": 2 } }`. `rule` is one of `home`, `dig`, `uncover`,
   `build`, `redeal`, `draw`, `king`, `least_bad`. For `redeal`, `card`, `onto` and `uncovers` are null; `onto` is null
-  for a move home or a king into an empty fan; `uncovers` is null for a draw. A king into an empty fan is `king` (or `dig`). The engine speaks in codes, never prose.
+  for a move home or a king into an empty fan; `uncovers` is null for a draw. A king into an empty fan is `king` (or `dig`). `open` is how many plays (a redeal aside) are open after the hint's move (0 for a redeal); `alt` is, for a hinted build, the other build that leaves the most plays open (ties: one that frees a card, then the lowest fan), else null. The page works out what a move freezes from `fans` and `home`. The engine speaks in codes, never prose.

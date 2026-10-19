@@ -48,6 +48,59 @@ fn rule_is_true(game: &Game, hint: &Hint) {
     }
 }
 
+/// `open` and `alt` are true of the position, written out afresh.
+fn open_and_alt_are_true(game: &Game, hint: &Hint) {
+    let open_after = |command: Command| {
+        let mut after = game.clone();
+        after.apply(command).unwrap();
+        after
+            .legal()
+            .iter()
+            .filter(|c| **c != Command::Redeal)
+            .count()
+    };
+    if hint.command == Command::Redeal {
+        assert_eq!((hint.open, hint.alt), (0, None));
+        return;
+    }
+    assert_eq!(hint.open, open_after(hint.command));
+    match hint.alt {
+        None => {}
+        Some(alt) => {
+            assert!(matches!(
+                hint.command,
+                Command::Move {
+                    to: Dest::Fan(_),
+                    ..
+                }
+            ));
+            assert_ne!(alt.command, hint.command);
+            assert!(game.legal().contains(&alt.command));
+            assert_eq!(alt.open, open_after(alt.command));
+            let Command::Move {
+                from,
+                to: Dest::Fan(to),
+            } = alt.command
+            else {
+                panic!("a rival is a build: {alt:?}");
+            };
+            assert_eq!(game.top(from), Some(alt.card));
+            assert_eq!(game.top(to), Some(alt.onto));
+            // no other build keeps more plays open
+            for c in game.legal() {
+                if let Command::Move {
+                    to: Dest::Fan(t), ..
+                } = c
+                {
+                    if c != hint.command && game.top(t).is_some() {
+                        assert!(open_after(c) <= alt.open);
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn play_out(seed: u64, rules: Rules) -> Game {
     let mut game = Game::new(seed, rules);
     for _ in 0..2_000 {
@@ -61,6 +114,7 @@ fn play_out(seed: u64, rules: Rules) -> Game {
             "seed {seed}: {hint:?} is not legal"
         );
         rule_is_true(&game, &hint);
+        open_and_alt_are_true(&game, &hint);
         game.apply(hint.command).unwrap();
     }
     panic!("seed {seed}: the game did not end in 2000 moves");

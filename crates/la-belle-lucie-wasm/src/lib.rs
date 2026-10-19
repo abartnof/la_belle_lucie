@@ -24,13 +24,28 @@ fn card_json(card: Option<Card>) -> String {
 }
 
 fn hint_json(hint: &Hint) -> String {
+    let alt = hint.alt.map_or_else(
+        || "null".to_string(),
+        |a| {
+            format!(
+                "{{\"move\":\"{}\",\"card\":\"{}\",\"onto\":\"{}\",\"uncovers\":{},\"open\":{}}}",
+                a.command.text(),
+                a.card.code(),
+                a.onto.code(),
+                card_json(a.uncovers),
+                a.open,
+            )
+        },
+    );
     format!(
-        "{{\"rule\":\"{}\",\"move\":\"{}\",\"card\":{},\"onto\":{},\"uncovers\":{}}}",
+        "{{\"rule\":\"{}\",\"move\":\"{}\",\"card\":{},\"onto\":{},\"uncovers\":{},\"open\":{},\"alt\":{}}}",
         hint.rule.id(),
         hint.command.text(),
         card_json(hint.card),
         card_json(hint.onto),
         card_json(hint.uncovers),
+        hint.open,
+        alt,
     )
 }
 

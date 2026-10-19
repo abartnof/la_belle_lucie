@@ -163,6 +163,13 @@ fn a_hint_is_asked_for_and_cleared_by_the_next_command() {
     assert!(legal(&s).contains(&mv), "the hinted move is legal");
     assert!(hint["card"].is_string());
     assert!(hint.get("onto").is_some() && hint.get("uncovers").is_some());
+    assert!(hint["open"].is_u64(), "the plays left open after the hint");
+    let alt = &hint["alt"];
+    if !alt.is_null() {
+        assert!(legal(&s).contains(&alt["move"].as_str().unwrap().to_string()));
+        assert!(alt["card"].is_string() && alt["onto"].is_string() && alt["open"].is_u64());
+        assert!(alt.get("uncovers").is_some());
+    }
     assert_eq!(s["moves"], 0, "a hint is recorded nowhere");
     assert_eq!(s["undoable"], false);
     // A refused command leaves it; an accepted one clears it.

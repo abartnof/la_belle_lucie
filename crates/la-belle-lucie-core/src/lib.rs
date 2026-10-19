@@ -15,7 +15,7 @@ pub mod table;
 pub use cards::{Card, Suit};
 pub use command::{Command, Dest};
 pub use game::{DrawState, Game, Illegal};
-pub use hint::{classify, Hint, Rule};
+pub use hint::{classify, Alt, Hint, Rule};
 pub use rules::{preset, Rules};
 
 /// Hand-built positions for the tests.

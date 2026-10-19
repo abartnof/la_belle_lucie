@@ -50,6 +50,20 @@ pub struct Hint {
     pub onto: Option<Card>,
     /// The card it leaves showing, for a move from a fan with more cards.
     pub uncovers: Option<Card>,
+    /// How many plays (a redeal aside) are open after the hint's move.
+    pub open: usize,
+    /// For a build: the other build that keeps the most plays open.
+    pub alt: Option<Alt>,
+}
+
+/// A rival to a hinted build, in the same terms as the hint.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Alt {
+    pub command: Command,
+    pub card: Card,
+    pub onto: Card,
+    pub uncovers: Option<Card>,
+    pub open: usize,
 }
 
 /// Whether landing `card` on fan `to` would bury a lower card of its suit.
@@ -74,6 +88,8 @@ pub fn classify(table: &Table, command: Command) -> Hint {
         card: None,
         onto: None,
         uncovers: None,
+        open: 0,
+        alt: None,
     };
     match command {
         Command::Redeal => hint.rule = Rule::Redeal,
@@ -246,6 +262,68 @@ impl Search {
 }
 
 impl Game {
+    /// The plays open once `command` is made (a redeal never counts).
+    fn open_after(&self, command: Command) -> usize {
+        let mut table = self.table.clone();
+        table.play(command);
+        let draw = self.draw_open() && !matches!(command, Command::Draw { .. });
+        table.moves(self.rules.king_fills, draw).len()
+    }
+
+    /// Fills in what a hint says of the plays it leaves open and, for a build,
+    /// of the other build that leaves the most open (ties: the one that frees a
+    /// card, then the lowest fan).
+    fn annotate(&self, mut hint: Hint) -> Hint {
+        if hint.command == Command::Redeal {
+            return hint;
+        }
+        hint.open = self.open_after(hint.command);
+        let Command::Move {
+            to: Dest::Fan(_), ..
+        } = hint.command
+        else {
+            return hint;
+        };
+        if hint.onto.is_none() {
+            return hint;
+        }
+        let mut best: Option<(usize, bool, Alt)> = None;
+        for command in self.legal() {
+            let Command::Move {
+                from,
+                to: Dest::Fan(to),
+            } = command
+            else {
+                continue;
+            };
+            if command == hint.command {
+                continue;
+            }
+            let (Some(card), Some(onto)) = (self.table.top(from), self.table.top(to)) else {
+                continue;
+            };
+            let cards = &self.table.fans[from];
+            let uncovers = cards.len().checked_sub(2).map(|i| cards[i]);
+            let open = self.open_after(command);
+            let key = (open, uncovers.is_some());
+            if best.is_none_or(|(o, f, _)| key > (o, f)) {
+                best = Some((
+                    open,
+                    uncovers.is_some(),
+                    Alt {
+                        command,
+                        card,
+                        onto,
+                        uncovers,
+                        open,
+                    },
+                ));
+            }
+        }
+        hint.alt = best.map(|(_, _, alt)| alt);
+        hint
+    }
+
     /// The best first move: a move home if there is one (always right), else
     /// the first move of the line of the current deal that ends with the most
     /// cards home (a win outranks all); with no move, a redeal.
@@ -255,7 +333,7 @@ impl Game {
             .iter()
             .find(|c| matches!(c, Command::Move { to: Dest::Home, .. }))
         {
-            return Some(classify(&self.table, home));
+            return Some(self.annotate(classify(&self.table, home)));
         }
         let mut plan = self.plan.borrow_mut();
         if !plan.first().is_some_and(|c| legal.contains(c)) {
@@ -266,7 +344,7 @@ impl Game {
             None if legal.contains(&Command::Redeal) => Command::Redeal,
             None => return None,
         };
-        Some(classify(&self.table, command))
+        Some(self.annotate(classify(&self.table, command)))
     }
 
     /// The best line of moves through the current deal, up to the node cap.
@@ -468,5 +546,51 @@ mod tests {
             let h = g.hint().unwrap();
             assert!(g.legal().contains(&h.command));
         }
+    }
+
+    /// The moves open after a command: what `legal` would list, redeal aside.
+    fn open_after(g: &Game, command: Command) -> usize {
+        let mut after = g.clone();
+        after.apply(command).unwrap();
+        after
+            .legal()
+            .iter()
+            .filter(|c| **c != Command::Redeal)
+            .count()
+    }
+
+    #[test]
+    fn a_hint_counts_the_moves_it_leaves_open() {
+        let g = game(4, "KS 3H / 9C 4H / 8D 2C / 7S 3C / QD", [0; 4]);
+        let h = g.hint().unwrap();
+        assert_eq!(h.open, open_after(&g, h.command));
+    }
+
+    #[test]
+    fn a_build_names_its_best_rival() {
+        // Two builds: 3H onto 4H (frees KS) and 2C onto 3C (frees 8D).
+        let g = game(4, "KS 3H / 9C 4H / 8D 2C / 7S 3C / QD", [0; 4]);
+        let h = g.hint().unwrap();
+        let alt = h.alt.expect("another build exists");
+        assert_ne!(alt.command, h.command);
+        assert!(g.legal().contains(&alt.command));
+        assert_eq!(alt.open, open_after(&g, alt.command));
+        // Of the other builds, none keeps more moves open.
+        for c in g.legal() {
+            if let Command::Move { to: Fan(t), .. } = c {
+                if c != h.command && g.table.top(t).is_some() {
+                    assert!(open_after(&g, c) <= alt.open);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn no_rival_when_there_is_no_other_build() {
+        let g = game(4, "KS 3H / 9C 4H / 8D", [0; 4]);
+        let h = g.hint().unwrap();
+        assert_eq!(h.alt, None);
+        let g = game(4, "9C 5H / 2S AS", [0; 4]);
+        assert_eq!(g.hint().unwrap().alt, None, "a move home has no rival");
     }
 }
