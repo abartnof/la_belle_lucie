@@ -17,13 +17,15 @@ Where things stand. Keep this current as work lands.
   casts a shadow and moves on Material 3 easing (`src/arrow.js`, `src/arrow-mesh.js`). One focus blue marks everything to
   look at or act on (lit Redeal, hint, chosen card, targets, focus); fans longer than three spread on
   hover, focus or tap. Faces: high-visibility by default, classic, or suit contrast.
-- Hint prose names the game's central tension: a card placed on a pile freezes everything under it until it moves again. The `do` sentence says what a move freezes (or that nothing under it is needed soon), the principle teaches the cost (`src/hints.js`).
+- Hint prose weighs the game's central tension (`src/hints.js`): a built card can only leave by going home, so what it covers waits for its suit to go home through the run it sits on. Sentence one says what the move frees, what it freezes and for how long (or that it locks a lower card of its own suit, and whether a redeal can undo it), the plays it leaves open, and the rival build it beats; sentence two is a rule of thumb for that situation. The engine adds `hint.open` and `hint.alt`. Every clause is checked against the position over 75 hint-played games (`test/hints.test.js`). Evidence and the other tensions (mobility, last deal, own-suit lock): 300 paired playouts, in the maintainer's design notes below.
 - Fans show every index at rest up to six cards (99% of piles in 400 simulated Classic games; 94% are four or fewer): a slot is as wide as its pile needs (strip 0.42 of a card, which keeps the 2.6 cm index whole) and a row's slots sit side by side, so the camera takes in the widest row. A longer fan is squeezed and spreads on hover. A card that only slides because a neighbouring pile grew glides flat (`src/layout.js`, `tagOf` in `src/table.js`).
 - Redeal plays one of seven animations (Random by default; a Settings choice, `redealFx`), each landing
   every card exactly on the engine's layout (`src/redeal-fx.js`, from the maintainer's demo).
 - Two independent code reviews (engine, page) were done; their verified findings are fixed.
 - Hint play wins about 16% of Classic deals over 300 games (engine test; research/sim has the
   search lower bound of 19% and greedy 5.7%).
+
+  Coaching evidence (descriptive; 300 hint-played Classic games, 8,788 build hints; 20,999 paired playouts of alternatives): 41% of hints cover a card wanted sooner than the pile releases; an alternative that does costs 2.7 cards home against 0.8 when neither freezes; each play an alternative closes costs about one more card; on the last deal an urgent freeze costs 3.7 against 2.6 with a redeal in hand. Per-decision outcomes are noisy (R² 1.2%), so the prose says "tends to".
 
 ## Next
 
