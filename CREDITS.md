@@ -28,4 +28,4 @@ illustrations by L.-M. Boutet de Monvel; the typeset music is from Project Guten
 Gallica, BnF). The book is public domain in the USA; the page uses the music only, not
 Project Gutenberg's name or marks. The arrangements (bass ostinato, percussion tick,
 layering, lo-fi rendering) were made by Claude (Anthropic) at the maintainer's direction;
-the audio here is those renders re-encoded to 32 kbps mono AAC to keep the page small.
+the audio here is rendered again from their MIDI (`research/soundtrack/`), a little softer than the draft, and encoded as 40 kbps mono AAC at 22.05 kHz to keep the page small.
