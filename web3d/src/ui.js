@@ -354,7 +354,7 @@ export function createUi(root, hooks) {
     hooks.settingsChanged?.(settingsNow());
   }
   function check(id, label, words, key) {
-    return el("div", { class: "lbl-field" }, el("label", { for: id }, el("input", { type: "checkbox", id, checked: prefs.settings[key], onchange: (e) => changed({ [key]: e.target.checked }) }), " ", label), el("p", { class: "lbl-note", id: `${id}-d` }, words));
+    return el("div", { class: "lbl-field" }, el("label", { for: id }, el("input", { type: "checkbox", id, checked: prefs.settings[key], onchange: (e) => changed({ [key]: e.target.checked }) }), " ", label), words ? el("p", { class: "lbl-note", id: `${id}-d` }, words) : null);
   }
   function select(id, label, options, key, words) {
     const sel = el("select", { id, "aria-describedby": words ? `${id}-d` : false, onchange: (e) => changed({ [key]: e.target.value }) }, options.map(([v, t]) => el("option", { value: v, selected: v === (prefs.settings[key] === "jumbo" ? "auto" : prefs.settings[key]) }, t)));
@@ -367,7 +367,7 @@ export function createUi(root, hooks) {
       check("lbl-s-hl", "Highlight legal targets", "Lights the places the chosen card may go.", "highlight"),
       check("lbl-s-home", "Play cards home automatically", "A card that can go home goes at once, with no click.", "autoHome"),
       check("lbl-s-moves", "Count moves", "Shows the move count.", "showMoves"),
-      check("lbl-s-music", "Music", "Old French folk songs, one after another. Also the speaker button at the top.", "music"),
+      check("lbl-s-music", "Music", null, "music"),
       select("lbl-s-speed", "Animation", [["normal", "Normal"], ["instant", "Instant"]], "speed"),
       select("lbl-s-redeal", "Redeal animation", REDEAL_FX.map((id) => [id, id === "random" ? "Random" : id === "simple" ? "Simple" : EFFECT_NAMES[id]]), "redealFx", "How the cards are gathered and dealt again. Random picks a different one each time; Simple is the plain slide. Instant animation skips it."),
       select("lbl-s-faces", "Card faces", [["auto", "High-visibility"], ["classic", "Classic"], ["contrast", "Suit contrast"]], "faces", "High-visibility has large corner indices that stay readable where cards overlap. Suit contrast adds white-on-black clubs and white-on-red diamonds."),
@@ -459,7 +459,7 @@ export function createUi(root, hooks) {
     // The music and the aids as in Settings, here too (the same stored settings), and first: a new
     // player changes these far more often than the rules.
     const sound = el("fieldset", { class: "lbl-set" }, el("legend", {}, "Sound"),
-      check("lbl-n-music", "Music", "Old French folk songs, one after another. Also the music button at the top.", "music"),
+      check("lbl-n-music", "Music", null, "music"),
     );
     const aids = el("fieldset", { class: "lbl-set" }, el("legend", {}, "Aids"),
       check("lbl-n-hints", "Hints", "Shows the Hint button.", "hints"),
