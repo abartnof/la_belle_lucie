@@ -7,9 +7,13 @@
 //   portrait   the same, 4 a row (aspect below PORTRAIT_BELOW)
 //
 // A fan is a cascade to the right: the first (bottom) card at the slot's left,
-// each next one `step` further right, so the left strip of every card, where
-// its corner index is, stays in view and the top card (rightmost) is whole.
-// The step shrinks for a long run so the cascade never leaves its slot.
+// each next one `STEP` of a card's width further right, which keeps the left
+// strip of every card, where its corner index is, whole and clear of the next
+// card. A slot is as wide as its fan needs (never narrower than three cards'),
+// up to SHOWN cards, so a fan of up to SHOWN shows every index at rest; the
+// slots of a row sit side by side, left to right, and the camera takes in the
+// widest row. A longer fan is squeezed into the width of SHOWN (and spreads to
+// be read when hovered or focused).
 
 export const CARD = Object.freeze({ width: 6.35, height: 8.89 });
 export const PORTRAIT_BELOW = 0.85;
@@ -39,6 +43,8 @@ export const STRIP = 2.9;
 export const SPREAD_RISE = 1.2;
 
 const STEP = 0.42; // of a card's width: the strip a corner index needs
+// How many cards a fan shows whole at rest (99% of piles in simulated games are this short).
+export const SHOWN = 6;
 const GAP_X = 0.24; // of a card's width, between two slots (a phone's: less)
 const GAP_X_PORTRAIT = 0.14;
 const GAP_Z = 0.16; // of a card's height, between two rows (at least)
@@ -78,29 +84,41 @@ export function layout(state, aspect, { margins = MARGINS, spread = null } = {})
   const fanZ = (row) => z0 + HOME_GAP * H + (row + 1) * pitchZ;
 
   const poses = {};
+  const step0 = STEP * W;
+  const widthOf = (n) => W + (Math.min(Math.max(n, 3), SHOWN) - 1) * step0;
+  // Each row's slots, left to right from the grid's left edge.
+  const lefts = [];
+  let widest = contentW;
+  const rights = []; // where each row ends, to a millimetre
+  for (let row = 0; row < rows; row++) {
+    let x = x0;
+    for (let col = 0; col < cols && row * cols + col < fans.length; col++) {
+      lefts.push(x);
+      x += widthOf(fans[row * cols + col].length) + gapX;
+    }
+    widest = Math.max(widest, x - gapX - x0);
+    rights.push(Math.round((x - gapX) * 10));
+  }
   const slots = fans.map((cards, fan) => {
     const row = Math.floor(fan / cols);
     const col = fan % cols;
-    const left = x0 + col * pitchX;
+    const left = lefts[fan];
     const n = cards.length;
-    let step = n > 1 ? Math.min(STEP * W, (inner - W) / (n - 1)) : 0;
-    // A long fan takes the empty slots to its right, on its row, for the strip.
-    let free = 0;
-    for (let j = fan + 1; j < fans.length && Math.floor(j / cols) === row && fans[j].length === 0; j++) free++;
-    if (n > 3) step = Math.max(step, Math.min(STRIP, (inner + free * pitchX - W) / (n - 1)));
+    const width = widthOf(n);
+    let step = n > 1 ? Math.min(step0, (width - W) / (n - 1)) : 0;
     let x = left;
     let lift = 0;
-    if (spread === fan && n > 3 && step < STRIP - 1e-6) {
+    if (spread === fan && n > SHOWN) {
       step = STRIP;
       lift = SPREAD_RISE;
       // Keep the whole spread inside the table's width.
-      x = Math.min(left, x0 + contentW - (W + (n - 1) * step));
+      x = Math.min(left, x0 + widest - (W + (n - 1) * step));
       x = Math.max(x, x0);
     }
     cards.forEach((code, i) => {
       poses[code] = { x: x + W / 2 + i * step, z: fanZ(row), y: i * RISE + lift, faceUp: true, yaw: 0, fan, home: false, index: i };
     });
-    return { fan, x0: left, x1: left + pitchX - gapX / 2, cx: left + W / 2, cz: fanZ(row), step, count: n, width: W, height: H, row, col, inner };
+    return { fan, x0: left, x1: left + width + gapX / 2, cx: left + W / 2, cz: fanZ(row), step, count: n, width: W, height: H, row, col, inner: width };
   });
 
   // The foundations, centred over the grid.
@@ -123,13 +141,14 @@ export function layout(state, aspect, { margins = MARGINS, spread = null } = {})
   for (const s of slots) addRect(s.x0, s.x0 + s.inner, s.cz);
   for (const h of home) addRect(h.x0, h.x1, h.cz);
   // The lifted card in hand (see table.js) rises a little: keep it in view too.
-  // The fit depends only on the fan count, the aspect and the margins (not on
-  // which fan is spread, nor on where the cards lie): it is costly, so it is kept.
-  const key = `${fans.length}|${aspect}|${margins.top}|${margins.bottom}|${margins.side}`;
+  // The fit depends only on the fan count, the aspect, the margins and where each
+  // row ends (not on which fan is spread, nor on where the cards lie): it is
+  // costly, so it is kept.
+  const key = `${fans.length}|${aspect}|${margins.top}|${margins.bottom}|${margins.side}|${rights.join(",")}`;
   let camera = fitMemo.get(key);
   if (!camera) {
     camera = fitCamera(points, aspect, margins);
-    if (fitMemo.size >= 16) fitMemo.delete(fitMemo.keys().next().value);
+    if (fitMemo.size >= 64) fitMemo.delete(fitMemo.keys().next().value);
     fitMemo.set(key, camera);
   }
 

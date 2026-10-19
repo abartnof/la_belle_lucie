@@ -18,6 +18,7 @@ Where things stand. Keep this current as work lands.
   look at or act on (lit Redeal, hint, chosen card, targets, focus); fans longer than three spread on
   hover, focus or tap. Faces: high-visibility by default, classic, or suit contrast.
 - Hint prose names the game's central tension: a card placed on a pile freezes everything under it until it moves again. The `do` sentence says what a move freezes (or that nothing under it is needed soon), the principle teaches the cost (`src/hints.js`).
+- Fans show every index at rest up to six cards (99% of piles in 400 simulated Classic games; 94% are four or fewer): a slot is as wide as its pile needs (strip 0.42 of a card, which keeps the 2.6 cm index whole) and a row's slots sit side by side, so the camera takes in the widest row. A longer fan is squeezed and spreads on hover. A card that only slides because a neighbouring pile grew glides flat (`src/layout.js`, `tagOf` in `src/table.js`).
 - Redeal plays one of seven animations (Random by default; a Settings choice, `redealFx`), each landing
   every card exactly on the engine's layout (`src/redeal-fx.js`, from the maintainer's demo).
 - Two independent code reviews (engine, page) were done; their verified findings are fixed.

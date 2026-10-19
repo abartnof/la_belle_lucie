@@ -439,13 +439,16 @@ export function createTable(canvas, hooks = {}) {
   }
 
   // Take every card to where the layout puts it (at once, or tweened).
+  // A card that kept its place in its pile and only slid along because a pile
+  // beside it grew or shrank is not "played": it glides, flat, and is no part of a stagger.
+  const tagOf = (p) => `${p.home ? "h" : p.fan}:${p.index}`;
   function movePoses(quick, gentle) {
     const now = performance.now();
     // Many cards moving at once is a redeal: stagger them in reading order.
     const moving = CODES.filter((c) => {
       const p = lay.poses[c];
       const e = entries.get(c);
-      if (!p || !e.placed) return false;
+      if (!p || !e.placed || e.tag === tagOf(p)) return false;
       const to = poseOf(p);
       return e.mesh.position.distanceToSquared(to.position) > 1e-4;
     });
@@ -458,6 +461,8 @@ export function createTable(canvas, hooks = {}) {
       e.mesh.visible = !!p;
       if (!p) continue;
       const to = poseOf(p);
+      const slid = e.tag === tagOf(p);
+      e.tag = tagOf(p);
       if (quick || !e.placed) {
         put(e.mesh, to);
         e.anim = null;
@@ -466,9 +471,10 @@ export function createTable(canvas, hooks = {}) {
       }
       if (e.mesh.position.distanceToSquared(to.position) < 1e-4 && !e.anim) continue;
       const from = { position: e.mesh.position.clone(), quaternion: e.mesh.quaternion.clone() };
-      const delay = staggered ? Math.min(700, (rank.get(code) ?? 0) * 14) : 0;
-      const lift = gentle ? 0 : staggered ? LIFT * 0.6 : LIFT;
-      e.anim = { start: now + delay, dur: gentle ? SPREAD_MS : MOVE_MS + (staggered ? 120 : 0), fn: hop(from, to, { ease: M3.standard, lift }), to, from };
+      const delay = staggered && !slid ? Math.min(700, (rank.get(code) ?? 0) * 14) : 0;
+      const glide = gentle || slid;
+      const lift = glide ? 0 : staggered ? LIFT * 0.6 : LIFT;
+      e.anim = { start: now + delay, dur: glide ? SPREAD_MS : MOVE_MS + (staggered ? 120 : 0), fn: hop(from, to, { ease: M3.standard, lift }), to, from };
     }
     dirty = true;
   }

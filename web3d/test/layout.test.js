@@ -128,24 +128,54 @@ const longState = (fan = 7, n = 13, empties = []) => {
   return { fans, home: [0, 0, 0, 0], prompt: "play" };
 };
 
-test("a long fan with empty slots to its right keeps the readable strip at rest", () => {
-  const st = longState(7, 9, [8, 9, 10]);
-  const lay = layout(st, 16 / 9);
-  const xs = st.fans[7].map((c) => lay.poses[c].x);
-  const step = xs[1] - xs[0];
-  assert.ok(step >= STRIP - 1e-6, `step ${step}`);
-  // it stays on its own row and inside the table
-  const right = Math.max(...xs) + CARD.width / 2;
-  assert.ok(right <= lay.slots[10].x0 + lay.slots[10].inner + 1e-6);
-});
+import { SHOWN } from "../src/layout.js";
+import { JUMBO } from "../../kit/js/faces.js";
 
-test("with no room to the right a long fan compresses as before and never leaves its slot", () => {
-  const st = longState(7, 9, []);
-  const lay = layout(st, 16 / 9);
-  const xs = st.fans[7].map((c) => lay.poses[c].x);
-  assert.ok(xs[1] - xs[0] < STRIP);
-  assert.ok(Math.max(...xs) + CARD.width / 2 <= lay.slots[7].x0 + lay.slots[7].inner + 1e-6);
-});
+// The corner index is drawn in the card's left JUMBO.strip of JUMBO.w units.
+const INDEX_CM = (JUMBO.strip / JUMBO.w) * CARD.width;
+
+for (const [name, aspect] of Object.entries({ "16:9": 16 / 9, "4:3": 4 / 3 })) {
+  for (const n of [4, 5, SHOWN]) {
+    test(`a fan of ${n} shows every index whole, in its own slot, at ${name}`, () => {
+      const st = longState(7, n, []);
+      const lay = layout(st, aspect);
+      const xs = st.fans[7].map((c) => lay.poses[c].x);
+      for (let i = 1; i < xs.length; i++) assert.ok(xs[i] - xs[i - 1] >= INDEX_CM, `strip ${i}: ${xs[i] - xs[i - 1]}`);
+      const s = lay.slots[7];
+      assert.ok(Math.max(...xs) + CARD.width / 2 <= s.x0 + s.inner + 1e-6);
+      // the next slot in the row starts clear of it, and no two slots of a row overlap
+      const next = lay.slots[8];
+      assert.ok(next.x0 >= s.x0 + s.inner + 1, "a gap before the next slot");
+      for (const row of [0, 1, 2]) {
+        const r = lay.slots.filter((q) => q.row === row);
+        for (let i = 1; i < r.length; i++) assert.ok(r[i].x0 >= r[i - 1].x0 + r[i - 1].inner - 1e-6);
+      }
+    });
+  }
+
+  test(`a fan of ${SHOWN + 3} is squeezed into the width of ${SHOWN} at ${name}`, () => {
+    const st = longState(7, SHOWN + 3, []);
+    const lay = layout(st, aspect);
+    const xs = st.fans[7].map((c) => lay.poses[c].x);
+    assert.ok(xs[1] - xs[0] < INDEX_CM);
+    const s = lay.slots[7];
+    assert.ok(Math.max(...xs) + CARD.width / 2 <= s.x0 + s.inner + 1e-6);
+    assert.ok(Math.abs(s.inner - layout(longState(7, SHOWN, []), aspect).slots[7].inner) < 1e-6);
+  });
+
+  test(`the whole table, widest row included, is inside the view at ${name}`, () => {
+    const st = longState(2, SHOWN, []);
+    const fans = st.fans.map((f, i) => (i % 6 === 0 || i === 2 ? f : f)); // a row of long fans
+    for (const i of [0, 1, 2, 3, 4, 5]) fans[i] = PACK.slice(i * 6, i * 6 + 6);
+    const lay = layout({ fans, home: [0, 0, 0, 0] }, aspect);
+    for (const p of Object.values(lay.poses)) {
+      for (const dx of [-1, 1]) {
+        const [nx] = project(lay.camera, aspect, [p.x + (dx * CARD.width) / 2, p.y, p.z]);
+        assert.ok(Math.abs(nx) <= 1 - 2 * MARGINS.side + 1e-6, `x ${nx}`);
+      }
+    }
+  });
+}
 
 for (const [name, aspect] of Object.entries(ASPECTS)) {
   for (const fan of [0, 5, 7, 17]) {
