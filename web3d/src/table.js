@@ -453,6 +453,10 @@ export function createTable(canvas, hooks = {}) {
       return e.mesh.position.distanceToSquared(to.position) > 1e-4;
     });
     const staggered = !gentle && moving.length > 4;
+    // Cards in flight together (a play and the cards it sends home) must not pass
+    // through one another: each flies a little higher than the one that lands before it.
+    const byLanding = [...moving].sort((a, b) => lay.poses[a].y - lay.poses[b].y || lay.poses[a].x - lay.poses[b].x);
+    const tier = new Map(byLanding.map((c, i) => [c, Math.min(i, 6)]));
     const order = Object.keys(lay.poses).sort((a, b) => lay.poses[a].z - lay.poses[b].z || lay.poses[a].x - lay.poses[b].x);
     const rank = new Map(order.map((c, i) => [c, i]));
     for (const code of CODES) {
@@ -473,7 +477,7 @@ export function createTable(canvas, hooks = {}) {
       const from = { position: e.mesh.position.clone(), quaternion: e.mesh.quaternion.clone() };
       const delay = staggered && !slid ? Math.min(700, (rank.get(code) ?? 0) * 14) : 0;
       const glide = gentle || slid;
-      const lift = glide ? 0 : staggered ? LIFT * 0.6 : LIFT;
+      const lift = glide ? 0 : staggered ? LIFT * 0.6 : LIFT + 0.4 * (tier.get(code) ?? 0);
       e.anim = { start: now + delay, dur: glide ? SPREAD_MS : MOVE_MS + (staggered ? 120 : 0), fn: hop(from, to, { ease: M3.standard, lift }), to, from };
     }
     dirty = true;
